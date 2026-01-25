@@ -3,8 +3,9 @@
 
 #include <sys/select.h>
 #include <stddef.h>
+#include "buffer.h"
 
-#define MAX_TCP_CLIENTS 16
+#define TCP_MAX_CLIENTS 16
 #define TCP_READ_BUF_SIZE 2048
 
 typedef struct tcp_client
@@ -16,8 +17,7 @@ typedef struct tcp_server
 {
     int listen_fd;
     int max_fd;
-    fd_set readfds;
-    tcp_client_t clients[MAX_TCP_CLIENTS];
+    tcp_client_t clients[TCP_MAX_CLIENTS];
     int num_clients;
 } tcp_server_t;
 
@@ -25,14 +25,18 @@ int tcp_server_init(tcp_server_t *server, int port);
 
 void tcp_server_free(tcp_server_t *server);
 
-int tcp_server_process(tcp_server_t *server, char *buf, size_t buf_size);
+int tcp_server_listen(tcp_server_t *server, buffer_t *out_buf);
 
-void tcp_server_broadcast(tcp_server_t *server, const char *data, size_t len);
+void tcp_server_broadcast(tcp_server_t *server, const buffer_t *buf);
+
+//
 
 int tcp_client_init(tcp_client_t *client, const char *addr, int port);
 
 void tcp_client_free(tcp_client_t *client);
 
-int tcp_client_process(tcp_client_t *client, char *buf, size_t buf_size);
+int tcp_client_listen(tcp_client_t *client, buffer_t *out_buf);
+
+int tcp_client_send(tcp_client_t *client, const buffer_t *buf);
 
 #endif

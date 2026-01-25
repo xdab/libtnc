@@ -78,7 +78,7 @@ int main(void)
 
     begin_module("TCP");
     test_tcp_server_init_valid();
-    test_tcp_server_process_timeout();
+    test_tcp_server_listen_timeout();
     test_tcp_server_accept_client();
     test_tcp_server_read_data();
     test_tcp_server_client_disconnect();
@@ -86,7 +86,7 @@ int main(void)
     test_tcp_server_free();
     test_tcp_client_init_valid();
     test_tcp_client_init_invalid_address();
-    test_tcp_client_process_timeout();
+    test_tcp_client_listen_timeout();
     test_tcp_client_connect_and_read();
     test_tcp_client_server_disconnect();
     test_tcp_client_read_error();
@@ -97,17 +97,17 @@ int main(void)
     end_module();
 
     begin_module("UDP");
-    test_udp_init_valid();
-    test_udp_init_broadcast();
-    test_udp_send_unicast();
-    test_udp_send_broadcast();
-    test_udp_free();
-    test_udp_init_invalid_address();
-    test_udp_send_error_handling();
-    test_udp_send_broadcast_config();
+    test_udp_sender_init_valid();
+    test_udp_sender_init_broadcast();
+    test_udp_sender_send_unicast();
+    test_udp_sender_free();
+    test_udp_sender_init_invalid_address();
+    test_udp_sender_send_error();
+    test_udp_sender_init_broadcast_config();
     test_udp_server_init_valid();
-    test_udp_server_process_timeout();
+    test_udp_server_listen_timeout();
     test_udp_server_receive_data();
+    test_udp_server_init_invalid_address();
     test_udp_server_free();
     end_module();
 

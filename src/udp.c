@@ -1,5 +1,6 @@
 #include "udp.h"
 #include "common.h"
+#include "buffer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +10,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include <ctype.h>
+
+#define SELECT_TIMEOUT_MS 100
+#define SELECT_TIMEOUT_US (SELECT_TIMEOUT_MS * 1000)
 
 int udp_sender_init(udp_sender_t *sender, const char *addr, int port)
 {
@@ -27,10 +30,10 @@ int udp_sender_init(udp_sender_t *sender, const char *addr, int port)
 
     memset(sender, 0, sizeof(udp_sender_t));
 
-    sender->sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sender->sock < 0)
+    sender->fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sender->fd < 0)
     {
-        LOGV("socket() failed");
+        LOGV("socket() failed: %s (errno=%d)", strerror(errno), errno);
         return -1;
     }
 
@@ -41,7 +44,7 @@ int udp_sender_init(udp_sender_t *sender, const char *addr, int port)
     if (inet_pton(AF_INET, addr, &sender->dest_addr.sin_addr) <= 0)
     {
         LOG("invalid address: %s", addr);
-        close(sender->sock);
+        close(sender->fd);
         return -1;
     }
 
@@ -50,10 +53,10 @@ int udp_sender_init(udp_sender_t *sender, const char *addr, int port)
     if ((addr_int & 0xFF) == 0xFF)
     {
         int broadcast = 1;
-        if (setsockopt(sender->sock, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) < 0)
+        if (setsockopt(sender->fd, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) < 0)
         {
-            LOGV("setsockopt(SO_BROADCAST) failed");
-            close(sender->sock);
+            LOGV("setsockopt(SO_BROADCAST) failed: %s (errno=%d)", strerror(errno), errno);
+            close(sender->fd);
             return -1;
         }
     }
@@ -62,27 +65,25 @@ int udp_sender_init(udp_sender_t *sender, const char *addr, int port)
     return 0;
 }
 
-int udp_sender_send(udp_sender_t *sender, const char *data, size_t len)
+int udp_sender_send(udp_sender_t *sender, const buffer_t *buf)
 {
     nonnull(sender, "sender");
-    nonnull(data, "data");
-    nonzero(len, "len");
+    assert_buffer_valid(buf);
 
-    ssize_t sent = sendto(sender->sock, data, len, 0,
-                          (struct sockaddr *)&sender->dest_addr, sizeof(sender->dest_addr));
+    ssize_t sent = sendto(sender->fd, buf->data, buf->size, 0, (struct sockaddr *)&sender->dest_addr, sizeof(sender->dest_addr));
     if (sent < 0)
     {
         LOG("sendto failed: %s (errno=%d)", strerror(errno), errno);
         return -1;
     }
-    else if ((size_t)sent != len)
+    else if ((size_t)sent != (size_t)buf->size)
     {
-        LOG("partial send: %zd/%zu bytes", sent, len);
+        LOG("partial send: %zd/%d bytes: %s (errno=%d)", sent, buf->size, strerror(errno), errno);
         return -2;
     }
     else
     {
-        LOGV("sent %zu bytes to %s:%d", len,
+        LOGV("sent %d bytes to %s:%d", buf->size,
              inet_ntoa(sender->dest_addr.sin_addr), ntohs(sender->dest_addr.sin_port));
         return 0;
     }
@@ -92,10 +93,10 @@ void udp_sender_free(udp_sender_t *sender)
 {
     nonnull(sender, "sender");
 
-    if (sender->sock >= 0)
+    if (sender->fd >= 0)
     {
-        close(sender->sock);
-        sender->sock = -1;
+        close(sender->fd);
+        sender->fd = -1;
     }
 }
 
@@ -114,27 +115,26 @@ int udp_server_init(udp_server_t *server, int port)
     EXITIF(port > 65535, -1, "port must be less than 65536");
 
     memset(server, 0, sizeof(udp_server_t));
-    FD_ZERO(&server->readfds);
 
-    server->sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (server->sock < 0)
+    server->fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (server->fd < 0)
     {
-        LOGV("socket() failed");
+        LOGV("socket() failed: %s (errno=%d)", strerror(errno), errno);
         return -1;
     }
 
     int reuse = 1;
-    if (setsockopt(server->sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+    if (setsockopt(server->fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
     {
-        LOGV("setsockopt(SO_REUSEADDR) failed");
-        close(server->sock);
+        LOGV("setsockopt(SO_REUSEADDR) failed: %s (errno=%d)", strerror(errno), errno);
+        close(server->fd);
         return -1;
     }
 
-    if (set_nonblocking(server->sock) < 0)
+    if (set_nonblocking(server->fd) < 0)
     {
-        LOGV("set_nonblocking() failed");
-        close(server->sock);
+        LOGV("set_nonblocking() failed: %s (errno=%d)", strerror(errno), errno);
+        close(server->fd);
         return -1;
     }
 
@@ -144,16 +144,14 @@ int udp_server_init(udp_server_t *server, int port)
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(port);
 
-    if (bind(server->sock, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    if (bind(server->fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
-        LOG("bind() failed on port %d", port);
-        close(server->sock);
+        LOG("bind() failed on port %d: %s (errno=%d)", port, strerror(errno), errno);
+        close(server->fd);
         return -1;
     }
 
-    server->max_fd = server->sock;
     LOG("udp server listening on port %d", port);
-
     return 0;
 }
 
@@ -161,43 +159,43 @@ void udp_server_free(udp_server_t *server)
 {
     nonnull(server, "server");
 
-    if (server->sock >= 0)
+    if (server->fd >= 0)
     {
-        close(server->sock);
-        server->sock = -1;
+        close(server->fd);
+        server->fd = -1;
     }
 }
 
-int udp_server_process(udp_server_t *server, char *buf, size_t buf_size)
+int udp_server_listen(udp_server_t *server, buffer_t *buf)
 {
     nonnull(server, "server");
-    nonnull(buf, "buf");
-    nonzero(buf_size, "buf_size");
+    assert_buffer_valid(buf);
 
-    FD_ZERO(&server->readfds);
-    FD_SET(server->sock, &server->readfds);
-    server->max_fd = server->sock;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(server->fd, &fds);
 
     struct timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = 100000;
+    tv.tv_usec = SELECT_TIMEOUT_US;
 
-    int ret = select(server->max_fd + 1, &server->readfds, NULL, NULL, &tv);
+    int ret = select(server->fd + 1, &fds, NULL, NULL, &tv);
     if (ret < 0)
     {
         LOG("select() failed: %s (errno=%d)", strerror(errno), errno);
         return -1;
     }
 
-    if (ret == 0 || !FD_ISSET(server->sock, &server->readfds))
+    if (ret == 0 || !FD_ISSET(server->fd, &fds))
         return 0;
 
-    ssize_t n = recvfrom(server->sock, buf, buf_size, 0, NULL, NULL);
+    ssize_t n = recvfrom(server->fd, buf->data, buf->capacity, 0, NULL, NULL);
     if (n < 0)
     {
-        LOG("recvfrom failed: %s", strerror(errno));
+        LOG("recvfrom failed: %s (errno=%d)", strerror(errno), errno);
         return -1;
     }
 
+    buf->size = (int)n;
     return n;
 }

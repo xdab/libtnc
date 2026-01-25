@@ -22,12 +22,13 @@ void test_tcp_server_init_valid(void)
     tcp_server_free(&server);
 }
 
-void test_tcp_server_process_timeout(void)
+void test_tcp_server_listen_timeout(void)
 {
     tcp_server_t server;
     tcp_server_init(&server, 0);
-    char buf[1];
-    int result = tcp_server_process(&server, buf, 1);
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
+    int result = tcp_server_listen(&server, &buf);
     assert_equal_int(result, 0, "timeout returns 0");
     tcp_server_free(&server);
 }
@@ -57,10 +58,11 @@ void test_tcp_server_accept_client(void)
         exit(0);
     }
 
-    char buf[1];
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
     int attempts = 0;
     while (server.num_clients == 0 && attempts++ < 20)
-        tcp_server_process(&server, buf, 1);
+        tcp_server_listen(&server, &buf);
 
     assert_equal_int(server.num_clients, 1, "client accepted");
     assert_true(server.clients[0].fd >= 3, "client fd valid");
@@ -95,14 +97,15 @@ void test_tcp_server_read_data(void)
         exit(0);
     }
 
-    char buf[16];
+    char buf_data[16];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 16, .size = 0};
     int n = 0;
     int attempts = 0;
     while (n <= 0 && attempts++ < 20)
-        n = tcp_server_process(&server, buf, sizeof(buf));
+        n = tcp_server_listen(&server, &buf);
 
     assert_equal_int(n, 4, "read 4 bytes");
-    assert_memory(buf, (void *)"test", 4, "data matches");
+    assert_memory(buf_data, (void *)"test", 4, "data matches");
 
     waitpid(pid, NULL, 0);
     tcp_server_free(&server);
@@ -133,15 +136,16 @@ void test_tcp_server_client_disconnect(void)
         exit(0);
     }
 
-    char buf[1];
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
     int attempts = 0;
     while (server.num_clients == 0 && attempts++ < 20)
-        tcp_server_process(&server, buf, 1);
+        tcp_server_listen(&server, &buf);
     assert_equal_int(server.num_clients, 1, "client connected");
 
     attempts = 0;
     while (server.num_clients == 1 && attempts++ < 20)
-        tcp_server_process(&server, buf, 1);
+        tcp_server_listen(&server, &buf);
     assert_equal_int(server.num_clients, 0, "client disconnected");
 
     waitpid(pid, NULL, 0);
@@ -169,19 +173,22 @@ void test_tcp_server_broadcast(void)
         caddr.sin_port = htons(port);
         caddr.sin_addr.s_addr = inet_addr("127.0.0.1");
         connect(client_fd, (struct sockaddr *)&caddr, sizeof(caddr));
-        char buf[16];
-        int n = read(client_fd, buf, sizeof(buf));
+        char rbuf[16];
+        int n = read(client_fd, rbuf, sizeof(rbuf));
         close(client_fd);
         exit(0);
     }
 
-    char buf[1];
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
     int attempts = 0;
     while (server.num_clients == 0 && attempts++ < 20)
-        tcp_server_process(&server, buf, 1);
+        tcp_server_listen(&server, &buf);
     assert_equal_int(server.num_clients, 1, "client connected");
 
-    tcp_server_broadcast(&server, "hello", 5);
+    char msg_data[] = "hello";
+    buffer_t msg_buf = {.data = (unsigned char *)msg_data, .capacity = 5, .size = 5};
+    tcp_server_broadcast(&server, &msg_buf);
 
     usleep(200000);
     waitpid(pid, NULL, 0);
@@ -232,16 +239,17 @@ void test_tcp_client_init_invalid_address(void)
     assert_equal_int(result, -1, "invalid octet values rejected");
 }
 
-void test_tcp_client_process_timeout(void)
+void test_tcp_client_listen_timeout(void)
 {
     tcp_client_t client;
     tcp_client_init(&client, "127.0.0.1", 12345);
-    char buf[1];
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
 
     // Give connection time to fail (connecting to non-existent server)
     usleep(200000);
 
-    int result = tcp_client_process(&client, buf, 1);
+    int result = tcp_client_listen(&client, &buf);
     assert_equal_int(result, -1, "connection failure returns -1");
     tcp_client_free(&client);
 }
@@ -264,19 +272,20 @@ void test_tcp_client_connect_and_read(void)
         int client_init = tcp_client_init(&client, "127.0.0.1", port);
         assert_equal_int(client_init, 0, "client init successful");
 
-        char buf[16];
+        char buf_data[16];
+        buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 16, .size = 0};
         int n = 0;
         int attempts = 0;
         // Wait for connection and data
         while (n <= 0 && attempts++ < 100)
         {
-            n = tcp_client_process(&client, buf, sizeof(buf));
+            n = tcp_client_listen(&client, &buf);
             if (n == 0) // Connection in progress or no data
                 usleep(10000);
         }
 
         assert_equal_int(n, 4, "client read 4 bytes");
-        assert_memory(buf, (void *)"test", 4, "data matches");
+        assert_memory(buf_data, (void *)"test", 4, "data matches");
 
         tcp_client_free(&client);
         exit(0);
@@ -285,18 +294,21 @@ void test_tcp_client_connect_and_read(void)
     // Parent process: wait for client to connect, then send data
     usleep(200000); // Give child time to start connecting
 
-    char dummy_buf[1];
+    char dummy_buf_data[1];
+    buffer_t dummy_buf = {.data = (unsigned char *)dummy_buf_data, .capacity = 1, .size = 0};
     int attempts = 0;
     while (server.num_clients == 0 && attempts++ < 50)
     {
-        tcp_server_process(&server, dummy_buf, 1);
+        tcp_server_listen(&server, &dummy_buf);
         usleep(10000);
     }
 
     assert_equal_int(server.num_clients, 1, "server accepted client");
 
     // Send data to connected client
-    tcp_server_broadcast(&server, "test", 4);
+    char msg_data[] = "test";
+    buffer_t msg_buf = {.data = (unsigned char *)msg_data, .capacity = 4, .size = 4};
+    tcp_server_broadcast(&server, &msg_buf);
 
     waitpid(pid, NULL, 0);
     tcp_server_free(&server);
@@ -320,22 +332,26 @@ void test_tcp_client_server_disconnect(void)
         int client_init = tcp_client_init(&client, "127.0.0.1", port);
         assert_equal_int(client_init, 0, "client init successful");
 
-        char buf[16];
-        int n = 0;
+        char buf_data[16];
+        buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 16, .size = 0};
+
+        // Wait for connection to be fully established (SO_ERROR != EINPROGRESS)
         int attempts = 0;
-        // Wait for connection to be established
-        while (n == 0 && attempts++ < 50)
+        while (attempts++ < 100)
         {
-            n = tcp_client_process(&client, buf, sizeof(buf));
+            int error;
+            socklen_t len = sizeof(error);
+            if (getsockopt(client.fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0 && error == 0)
+                break; // Connection established
             usleep(10000);
         }
 
         // Now try to read - should eventually detect disconnect
-        n = 0;
+        int n = 0;
         attempts = 0;
         while (client.fd >= 0 && attempts++ < 50)
         {
-            n = tcp_client_process(&client, buf, sizeof(buf));
+            n = tcp_client_listen(&client, &buf);
             usleep(10000);
         }
 
@@ -349,11 +365,12 @@ void test_tcp_client_server_disconnect(void)
     // Parent process: accept client, then disconnect server
     usleep(200000); // Give child time to start connecting
 
-    char dummy_buf[1];
+    char dummy_buf_data[1];
+    buffer_t dummy_buf = {.data = (unsigned char *)dummy_buf_data, .capacity = 1, .size = 0};
     int attempts = 0;
     while (server.num_clients == 0 && attempts++ < 50)
     {
-        tcp_server_process(&server, dummy_buf, 1);
+        tcp_server_listen(&server, &dummy_buf);
         usleep(10000);
     }
 
@@ -375,8 +392,9 @@ void test_tcp_client_read_error(void)
     close(client.fd);
     client.fd = -1;
 
-    char buf[1];
-    int result = tcp_client_process(&client, buf, 1);
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
+    int result = tcp_client_listen(&client, &buf);
     assert_equal_int(result, -1, "read with invalid socket returns error");
     tcp_client_free(&client);
 }
@@ -407,39 +425,43 @@ void test_tcp_client_partial_read(void)
         int client_init = tcp_client_init(&client, "127.0.0.1", port);
         assert_equal_int(client_init, 0, "client init successful");
 
-        char buf[8];
+        char buf_data[8];
+        buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 8, .size = 0};
         int n1 = 0;
         int attempts = 0;
         while (n1 <= 0 && attempts++ < 50)
         {
-            n1 = tcp_client_process(&client, buf, sizeof(buf));
+            n1 = tcp_client_listen(&client, &buf);
             usleep(10000);
         }
         assert_equal_int(n1, 8, "first read 8 bytes");
-        assert_memory(buf, (void *)"hello wo", 8, "first chunk matches");
+        assert_memory(buf_data, (void *)"hello wo", 8, "first chunk matches");
 
-        int n2 = tcp_client_process(&client, buf, sizeof(buf));
+        int n2 = tcp_client_listen(&client, &buf);
         assert_equal_int(n2, 8, "second read 8 bytes");
-        assert_memory(buf, (void *)"rld! tes", 8, "second chunk matches");
+        assert_memory(buf_data, (void *)"rld! tes", 8, "second chunk matches");
 
-        int n3 = tcp_client_process(&client, buf, sizeof(buf));
+        int n3 = tcp_client_listen(&client, &buf);
         assert_equal_int(n3, 8, "third read 8 bytes");
-        assert_memory(buf, (void *)"t data", 6, "third chunk matches");
+        assert_memory(buf_data, (void *)"t data", 6, "third chunk matches");
 
         tcp_client_free(&client);
         exit(0);
     }
 
-    char dummy_buf[1];
+    char dummy_buf_data[1];
+    buffer_t dummy_buf = {.data = (unsigned char *)dummy_buf_data, .capacity = 1, .size = 0};
     int attempts = 0;
     while (server.num_clients == 0 && attempts++ < 50)
     {
-        tcp_server_process(&server, dummy_buf, 1);
+        tcp_server_listen(&server, &dummy_buf);
         usleep(10000);
     }
     assert_equal_int(server.num_clients, 1, "server accepted client");
 
-    tcp_server_broadcast(&server, "hello world! test data", 24);
+    char msg_data[] = "hello world! test data";
+    buffer_t msg_buf = {.data = (unsigned char *)msg_data, .capacity = 24, .size = 24};
+    tcp_server_broadcast(&server, &msg_buf);
 
     waitpid(pid, NULL, 0);
     tcp_server_free(&server);
@@ -462,15 +484,16 @@ void test_tcp_client_connection_in_progress(void)
         int client_init = tcp_client_init(&client, "127.0.0.1", port);
         assert_equal_int(client_init, 0, "client init successful");
 
-        char buf[16];
-        int n = tcp_client_process(&client, buf, sizeof(buf));
+        char buf_data[16];
+        buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 16, .size = 0};
+        int n = tcp_client_listen(&client, &buf);
         assert_equal_int(n, 0, "connection in progress, no data");
 
         usleep(200000); // Allow connection to establish
 
-        n = tcp_client_process(&client, buf, sizeof(buf));
+        n = tcp_client_listen(&client, &buf);
         assert_equal_int(n, 4, "read 4 bytes after connection");
-        assert_memory(buf, (void *)"test", 4, "data matches");
+        assert_memory(buf_data, (void *)"test", 4, "data matches");
 
         tcp_client_free(&client);
         exit(0);
@@ -478,16 +501,19 @@ void test_tcp_client_connection_in_progress(void)
 
     usleep(100000); // Let child start connecting
 
-    char dummy_buf[1];
+    char dummy_buf_data[1];
+    buffer_t dummy_buf = {.data = (unsigned char *)dummy_buf_data, .capacity = 1, .size = 0};
     int attempts = 0;
     while (server.num_clients == 0 && attempts++ < 50)
     {
-        tcp_server_process(&server, dummy_buf, 1);
+        tcp_server_listen(&server, &dummy_buf);
         usleep(10000);
     }
     assert_equal_int(server.num_clients, 1, "server accepted client");
 
-    tcp_server_broadcast(&server, "test", 4);
+    char msg_data[] = "test";
+    buffer_t msg_buf = {.data = (unsigned char *)msg_data, .capacity = 4, .size = 4};
+    tcp_server_broadcast(&server, &msg_buf);
 
     waitpid(pid, NULL, 0);
     tcp_server_free(&server);
@@ -510,12 +536,13 @@ void test_tcp_client_write_error(void)
         int client_init = tcp_client_init(&client, "127.0.0.1", port);
         assert_equal_int(client_init, 0, "client init successful");
 
-        char buf[16];
+        char buf_data[16];
+        buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 16, .size = 0};
         int n = 0;
         int attempts = 0;
         while (client.fd >= 0 && attempts++ < 50)
         {
-            n = tcp_client_process(&client, buf, sizeof(buf));
+            n = tcp_client_listen(&client, &buf);
             if (n == -1)
                 break;
             usleep(10000);
@@ -530,11 +557,12 @@ void test_tcp_client_write_error(void)
 
     usleep(200000); // Give child time to start connecting
 
-    char dummy_buf[1];
+    char dummy_buf_data[1];
+    buffer_t dummy_buf = {.data = (unsigned char *)dummy_buf_data, .capacity = 1, .size = 0};
     int attempts = 0;
     while (server.num_clients == 0 && attempts++ < 50)
     {
-        tcp_server_process(&server, dummy_buf, 1);
+        tcp_server_listen(&server, &dummy_buf);
         usleep(10000);
     }
     assert_equal_int(server.num_clients, 1, "server accepted client");
