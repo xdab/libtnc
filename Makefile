@@ -1,4 +1,4 @@
-.PHONY: all build release test clean
+.PHONY: all build release test install clean
 
 all: test
 
@@ -14,6 +14,9 @@ release:
 
 test: build
 	./build/tnc_test
+
+install: release
+	cd build && sudo make install
 
 clean:
 	rm -rf build
