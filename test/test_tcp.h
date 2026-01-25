@@ -162,9 +162,13 @@ void test_tcp_server_broadcast(void)
     getsockname(server.listen_fd, (struct sockaddr *)&addr, &len);
     uint16_t port = ntohs(addr.sin_port);
 
+    int pipefd[2];
+    pipe(pipefd);
+
     pid_t pid = fork();
     if (pid == 0)
     {
+        close(pipefd[0]); // Close read end
         usleep(200000);
         int client_fd = socket(AF_INET, SOCK_STREAM, 0);
         struct sockaddr_in caddr;
@@ -175,9 +179,13 @@ void test_tcp_server_broadcast(void)
         connect(client_fd, (struct sockaddr *)&caddr, sizeof(caddr));
         char rbuf[16];
         int n = read(client_fd, rbuf, sizeof(rbuf));
+        write(pipefd[1], rbuf, n);
         close(client_fd);
+        close(pipefd[1]);
         exit(0);
     }
+
+    close(pipefd[1]); // Close write end
 
     char buf_data[1];
     buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
@@ -190,7 +198,12 @@ void test_tcp_server_broadcast(void)
     buffer_t msg_buf = {.data = (unsigned char *)msg_data, .capacity = 5, .size = 5};
     tcp_server_broadcast(&server, &msg_buf);
 
-    usleep(200000);
+    char received[16];
+    int n = read(pipefd[0], received, sizeof(received));
+    assert_equal_int(n, 5, "received 5 bytes");
+    assert_memory(received, (void *)"hello", 5, "broadcast message received");
+
+    close(pipefd[0]);
     waitpid(pid, NULL, 0);
     tcp_server_free(&server);
 }
@@ -570,6 +583,93 @@ void test_tcp_client_write_error(void)
     tcp_server_free(&server); // Disconnect server immediately
 
     waitpid(pid, NULL, 0);
+}
+
+void test_tcp_server_broadcast_two_clients(void)
+{
+    tcp_server_t server;
+    tcp_server_init(&server, 0);
+
+    struct sockaddr_in addr;
+    socklen_t len = sizeof(addr);
+    getsockname(server.listen_fd, (struct sockaddr *)&addr, &len);
+    uint16_t port = ntohs(addr.sin_port);
+
+    int pipefd1[2], pipefd2[2];
+    pipe(pipefd1);
+    pipe(pipefd2);
+
+    pid_t pid1 = fork();
+    if (pid1 == 0)
+    {
+        close(pipefd1[0]); // Close read end
+        close(pipefd2[0]);
+        close(pipefd2[1]);
+        usleep(200000);
+        int client_fd = socket(AF_INET, SOCK_STREAM, 0);
+        struct sockaddr_in caddr;
+        memset(&caddr, 0, sizeof(caddr));
+        caddr.sin_family = AF_INET;
+        caddr.sin_port = htons(port);
+        caddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        connect(client_fd, (struct sockaddr *)&caddr, sizeof(caddr));
+        char rbuf[32];
+        int n = read(client_fd, rbuf, sizeof(rbuf));
+        write(pipefd1[1], rbuf, n);
+        close(client_fd);
+        close(pipefd1[1]);
+        exit(0);
+    }
+
+    pid_t pid2 = fork();
+    if (pid2 == 0)
+    {
+        close(pipefd2[0]); // Close read end
+        close(pipefd1[0]);
+        close(pipefd1[1]);
+        usleep(200000);
+        int client_fd = socket(AF_INET, SOCK_STREAM, 0);
+        struct sockaddr_in caddr;
+        memset(&caddr, 0, sizeof(caddr));
+        caddr.sin_family = AF_INET;
+        caddr.sin_port = htons(port);
+        caddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        connect(client_fd, (struct sockaddr *)&caddr, sizeof(caddr));
+        char rbuf[32];
+        int n = read(client_fd, rbuf, sizeof(rbuf));
+        write(pipefd2[1], rbuf, n);
+        close(client_fd);
+        close(pipefd2[1]);
+        exit(0);
+    }
+
+    close(pipefd1[1]); // Close write ends
+    close(pipefd2[1]);
+
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
+    int attempts = 0;
+    while (server.num_clients < 2 && attempts++ < 50)
+        tcp_server_listen(&server, &buf);
+    assert_equal_int(server.num_clients, 2, "two clients connected");
+
+    char msg_data[] = "broadcast_test";
+    buffer_t msg_buf = {.data = (unsigned char *)msg_data, .capacity = 14, .size = 14};
+    tcp_server_broadcast(&server, &msg_buf);
+
+    char received1[32], received2[32];
+    int n1 = read(pipefd1[0], received1, sizeof(received1));
+    int n2 = read(pipefd2[0], received2, sizeof(received2));
+    assert_equal_int(n1, 14, "client1 received 14 bytes");
+    assert_equal_int(n2, 14, "client2 received 14 bytes");
+    assert_memory(received1, (void *)"broadcast_test", 14, "client1 broadcast message received");
+    assert_memory(received2, (void *)"broadcast_test", 14, "client2 broadcast message received");
+
+    close(pipefd1[0]);
+    close(pipefd2[0]);
+    waitpid(pid1, NULL, 0);
+    waitpid(pid2, NULL, 0);
+    tcp_server_free(&server);
 }
 
 #endif
