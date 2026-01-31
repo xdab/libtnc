@@ -672,4 +672,61 @@ void test_tcp_server_broadcast_two_clients(void)
     tcp_server_free(&server);
 }
 
+void test_tcp_client_send(void)
+{
+    tcp_server_t server;
+    tcp_server_init(&server, 0);
+
+    struct sockaddr_in addr;
+    socklen_t len = sizeof(addr);
+    getsockname(server.listen_fd, (struct sockaddr *)&addr, &len);
+    uint16_t port = ntohs(addr.sin_port);
+
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+        tcp_client_t client;
+        int client_init = tcp_client_init(&client, "127.0.0.1", port);
+        assert_equal_int(client_init, 0, "client init successful");
+
+        // Wait for connection to establish
+        int attempts = 0;
+        while (attempts++ < 100)
+        {
+            int error;
+            socklen_t errlen = sizeof(error);
+            if (getsockopt(client.fd, SOL_SOCKET, SO_ERROR, &error, &errlen) == 0 && error == 0)
+                break;
+            usleep(10000);
+        }
+
+        // Send data to server
+        char msg_data[] = "hello from client";
+        buffer_t msg_buf = {.data = (unsigned char *)msg_data, .capacity = 18, .size = 18};
+        int sent = tcp_client_send(&client, &msg_buf);
+        assert_equal_int(sent, 18, "sent 18 bytes");
+
+        tcp_client_free(&client);
+        exit(0);
+    }
+
+    usleep(200000);
+
+    char buf_data[32];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 32, .size = 0};
+    int n = 0;
+    int attempts = 0;
+    while (n <= 0 && attempts++ < 50)
+    {
+        n = tcp_server_listen(&server, &buf);
+        usleep(10000);
+    }
+
+    assert_equal_int(n, 18, "server received 18 bytes");
+    assert_memory(buf_data, (void *)"hello from client", 18, "data matches");
+
+    waitpid(pid, NULL, 0);
+    tcp_server_free(&server);
+}
+
 #endif

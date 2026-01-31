@@ -6,6 +6,7 @@
 #include "test_line.h"
 #include "test_tcp.h"
 #include "test_udp.h"
+#include "test_uds.h"
 
 int main(void)
 {
@@ -94,6 +95,7 @@ int main(void)
     test_tcp_client_connection_in_progress();
     test_tcp_client_write_error();
     test_tcp_client_free();
+    test_tcp_client_send();
     end_module();
 
     begin_module("UDP");
@@ -109,6 +111,28 @@ int main(void)
     test_udp_server_receive_data();
     test_udp_server_init_invalid_address();
     test_udp_server_free();
+    end_module();
+
+    begin_module("UDS");
+    test_uds_server_init_valid();
+    test_uds_server_listen_timeout();
+    test_uds_server_accept_client();
+    test_uds_server_read_data();
+    test_uds_server_client_disconnect();
+    test_uds_server_broadcast();
+    test_uds_server_free();
+    test_uds_server_init_invalid_path();
+    test_uds_client_init_valid();
+    test_uds_client_init_invalid_path();
+    test_uds_client_listen_timeout();
+    test_uds_client_connect_and_read();
+    test_uds_client_server_disconnect();
+    test_uds_client_read_error();
+    test_uds_client_free();
+    test_uds_client_partial_read();
+    test_uds_client_connection_in_progress();
+    test_uds_server_broadcast_two_clients();
+    test_uds_client_send();
     end_module();
 
     int failed = end_suite();

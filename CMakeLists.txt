@@ -13,6 +13,7 @@ set(TNC_SOURCES
     src/crc.c
     src/tcp.c
     src/udp.c
+    src/uds.c
     src/line.c
     src/conf.c
     src/common.c

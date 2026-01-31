@@ -16,7 +16,6 @@ typedef struct tcp_client
 typedef struct tcp_server
 {
     int listen_fd;
-    int max_fd;
     tcp_client_t clients[TCP_MAX_CLIENTS];
     int num_clients;
 } tcp_server_t;
