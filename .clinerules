@@ -5,7 +5,7 @@ TNC protocol library for AX.25 packet radio. Provides AX.25/KISS/TNC2/HDLC/CRC e
 ## Code Style
 
 - **Minimal comments**—self-explanatory code preferred
-- **Function prefixes** group related functionality: `ax25_`, `hldc_`, `kiss_`, `tnc2_`, `crc_`, `tcp_`, `udp_`, `line_`, `buf_`/`fbuf_`
+- **Function prefixes** group related functionality: `ax25_`, `hldc_`, `kiss_`, `tnc2_`, `crc_`, `tcp_`, `udp_`, `uds_`, `socket_`, `line_`, `buf_`/`fbuf_`
 - **Struct-based organization** with `init()`, `process()`, `free()` pattern
 - **Buffer safety**: Always pass buffer size, verify available capacity before writes
 - **Error codes**: 0 = success, negative = error
@@ -27,6 +27,8 @@ TNC protocol library for AX.25 packet radio. Provides AX.25/KISS/TNC2/HDLC/CRC e
 - `line_*`: Line parsing from stdin/TCP
 - `tcp_*`: TCP client/server integration
 - `udp_*`: UDP packet transmission and reception
+- `uds_*`: Unix domain socket client/server
+- `socket_*`: Socket utilities and multi-FD select() helper
 - `common_*`: Logging macros and utilities
 
 ## Protocol Details

@@ -7,6 +7,7 @@
 #include "test_tcp.h"
 #include "test_udp.h"
 #include "test_uds.h"
+#include "test_selector.h"
 
 int main(void)
 {
@@ -133,6 +134,23 @@ int main(void)
     test_uds_client_connection_in_progress();
     test_uds_server_broadcast_two_clients();
     test_uds_client_send();
+    end_module();
+
+    begin_module("Selector");
+    test_selector_create();
+    test_selector_add_single();
+    test_selector_add_multiple();
+    test_selector_add_max();
+    test_selector_remove();
+    test_selector_remove_nonexistent();
+    test_selector_wait_timeout();
+    test_selector_wait_ready();
+    test_selector_is_ready();
+    test_selector_is_ready_not_ready();
+    test_selector_free();
+    test_selector_mixed_events();
+    test_selector_max_fd_tracking();
+    test_selector_wait_error();
     end_module();
 
     int failed = end_suite();

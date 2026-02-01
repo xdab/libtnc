@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 
@@ -118,4 +119,133 @@ int socket_check_connection(int fd)
     }
 
     return 0;
+}
+
+//
+
+struct socket_selector
+{
+    int fds[SELECT_MAX_FDS];
+    int events[SELECT_MAX_FDS];
+    int num_fds;
+    int max_fd;
+};
+
+socket_selector_t *socket_selector_create(void)
+{
+    socket_selector_t *sel = malloc(sizeof(socket_selector_t));
+    if (!sel)
+        return NULL;
+
+    sel->num_fds = 0;
+    sel->max_fd = -1;
+
+    return sel;
+}
+
+int socket_selector_add(socket_selector_t *sel, int fd, int events)
+{
+    if (sel->num_fds >= SELECT_MAX_FDS)
+        return -1;
+
+    if (fd > sel->max_fd)
+        sel->max_fd = fd;
+
+    sel->fds[sel->num_fds] = fd;
+    sel->events[sel->num_fds] = events;
+    sel->num_fds++;
+
+    return 0;
+}
+
+int socket_selector_remove(socket_selector_t *sel, int fd)
+{
+    for (int i = 0; i < sel->num_fds; i++)
+    {
+        if (sel->fds[i] == fd)
+        {
+            sel->fds[i] = sel->fds[sel->num_fds - 1];
+            sel->events[i] = sel->events[sel->num_fds - 1];
+            sel->num_fds--;
+
+            if (fd == sel->max_fd)
+            {
+                sel->max_fd = -1;
+                for (int j = 0; j < sel->num_fds; j++)
+                    if (sel->fds[j] > sel->max_fd)
+                        sel->max_fd = sel->fds[j];
+            }
+
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+int socket_selector_wait(socket_selector_t *sel, int timeout_ms)
+{
+    fd_set read_fds;
+    fd_set write_fds;
+    fd_set error_fds;
+    FD_ZERO(&read_fds);
+    FD_ZERO(&write_fds);
+    FD_ZERO(&error_fds);
+
+    for (int i = 0; i < sel->num_fds; i++)
+    {
+        int fd = sel->fds[i];
+        int events = sel->events[i];
+        if (events & SELECT_READ)
+            FD_SET(fd, &read_fds);
+        if (events & SELECT_WRITE)
+            FD_SET(fd, &write_fds);
+        if (events & SELECT_ERROR)
+            FD_SET(fd, &error_fds);
+    }
+
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+
+    int ret = select(sel->max_fd + 1, &read_fds, &write_fds, &error_fds, &tv);
+    if (ret < 0)
+    {
+        LOG("select() failed: %s (errno=%d)", strerror(errno), errno);
+        return -1;
+    }
+
+    if (ret == 0)
+        return 0;
+
+    for (int i = 0; i < sel->num_fds; i++)
+    {
+        int fd = sel->fds[i];
+        int events = sel->events[i];
+        int ready = 0;
+        if ((events & SELECT_READ) && FD_ISSET(fd, &read_fds))
+            ready = 1;
+        else if ((events & SELECT_WRITE) && FD_ISSET(fd, &write_fds))
+            ready = 1;
+        else if ((events & SELECT_ERROR) && FD_ISSET(fd, &error_fds))
+            ready = 1;
+        sel->events[i] = ready ? (sel->events[i] | 0x80000000) : (sel->events[i] & 0x7FFFFFFF);
+    }
+
+    return ret;
+}
+
+int socket_selector_is_ready(socket_selector_t *sel, int fd)
+{
+    for (int i = 0; i < sel->num_fds; i++)
+    {
+        if (sel->fds[i] == fd)
+            return (sel->events[i] & 0x80000000) ? 1 : 0;
+    }
+    return 0;
+}
+
+void socket_selector_free(socket_selector_t *sel)
+{
+    free(sel);
 }
