@@ -123,24 +123,10 @@ int socket_check_connection(int fd)
 
 //
 
-struct socket_selector
+void socket_selector_init(socket_selector_t *sel)
 {
-    int fds[SELECT_MAX_FDS];
-    int events[SELECT_MAX_FDS];
-    int num_fds;
-    int max_fd;
-};
-
-socket_selector_t *socket_selector_create(void)
-{
-    socket_selector_t *sel = malloc(sizeof(socket_selector_t));
-    if (!sel)
-        return NULL;
-
     sel->num_fds = 0;
     sel->max_fd = -1;
-
-    return sel;
 }
 
 int socket_selector_add(socket_selector_t *sel, int fd, int events)
@@ -243,9 +229,4 @@ int socket_selector_is_ready(socket_selector_t *sel, int fd)
             return (sel->events[i] & 0x80000000) ? 1 : 0;
     }
     return 0;
-}
-
-void socket_selector_free(socket_selector_t *sel)
-{
-    free(sel);
 }

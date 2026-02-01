@@ -101,23 +101,23 @@ line_reader_process(&lr, ch);
 ### Multi-Socket Selection
 
 ```c
-socket_selector_t *sel = socket_selector_create();
-socket_selector_add(sel, tcp_server.listen_fd, SELECT_READ);
-socket_selector_add(sel, udp_server.fd, SELECT_READ);
-socket_selector_add(sel, uds_client.fd, SELECT_READ | SELECT_WRITE);
+socket_selector_t sel;
+socket_selector_init(&sel);
+socket_selector_add(&sel, tcp_server.listen_fd, SELECT_READ);
+socket_selector_add(&sel, udp_server.fd, SELECT_READ);
+socket_selector_add(&sel, uds_client.fd, SELECT_READ | SELECT_WRITE);
 
 while (1) {
-    int ready = socket_selector_wait(sel, 100);
+    int ready = socket_selector_wait(&sel, 100);
     if (ready > 0) {
-        if (socket_selector_is_ready(sel, tcp_server.listen_fd))
+        if (socket_selector_is_ready(&sel, tcp_server.listen_fd))
             tcp_server_listen(&server, &buf);
-        if (socket_selector_is_ready(sel, udp_server.fd))
+        if (socket_selector_is_ready(&sel, udp_server.fd))
             udp_server_listen(&udp_server, &buf);
-        if (socket_selector_is_ready(sel, uds_client.fd))
+        if (socket_selector_is_ready(&sel, uds_client.fd))
             uds_client_listen(&uds_client, &buf);
     }
 }
-socket_selector_free(sel);
 ```
 
 ## Dependencies

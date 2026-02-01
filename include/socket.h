@@ -10,7 +10,13 @@
 #define SELECT_WRITE (1 << 1)
 #define SELECT_ERROR (1 << 2)
 
-typedef struct socket_selector socket_selector_t;
+typedef struct socket_selector
+{
+    int fds[SELECT_MAX_FDS];
+    int events[SELECT_MAX_FDS];
+    int num_fds;
+    int max_fd;
+} socket_selector_t;
 
 int socket_set_nonblocking(int fd);
 
@@ -24,7 +30,7 @@ int socket_check_connection(int fd);
 
 //
 
-socket_selector_t *socket_selector_create(void);
+void socket_selector_init(socket_selector_t *sel);
 
 int socket_selector_add(socket_selector_t *sel, int fd, int events);
 
@@ -33,5 +39,3 @@ int socket_selector_remove(socket_selector_t *sel, int fd);
 int socket_selector_wait(socket_selector_t *sel, int timeout_ms);
 
 int socket_selector_is_ready(socket_selector_t *sel, int fd);
-
-void socket_selector_free(socket_selector_t *sel);
