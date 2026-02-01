@@ -1,11 +1,11 @@
 #include "udp.h"
 #include "common.h"
 #include "buffer.h"
+#include "socket.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -45,7 +45,6 @@ int udp_sender_init(udp_sender_t *sender, const char *addr, int port)
         return -1;
     }
 
-    // Enable broadcast if address ends with .255
     uint32_t addr_int = ntohl(sender->dest_addr.sin_addr.s_addr);
     if ((addr_int & 0xFF) == 0xFF)
     {
@@ -97,14 +96,6 @@ void udp_sender_free(udp_sender_t *sender)
     }
 }
 
-static int set_nonblocking(int fd)
-{
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0)
-        return -1;
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
 int udp_server_init(udp_server_t *server, int port, int timeout_ms)
 {
     nonnull(server, "server");
@@ -125,13 +116,6 @@ int udp_server_init(udp_server_t *server, int port, int timeout_ms)
     if (setsockopt(server->fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
     {
         LOGV("setsockopt(SO_REUSEADDR) failed: %s (errno=%d)", strerror(errno), errno);
-        close(server->fd);
-        return -1;
-    }
-
-    if (set_nonblocking(server->fd) < 0)
-    {
-        LOGV("set_nonblocking() failed: %s (errno=%d)", strerror(errno), errno);
         close(server->fd);
         return -1;
     }
@@ -169,31 +153,9 @@ int udp_server_listen(udp_server_t *server, buffer_t *buf)
     nonnull(server, "server");
     assert_buffer_valid(buf);
 
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(server->fd, &fds);
-
-    int ret;
-    if (server->timeout_ms > 0)
-    {
-        struct timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = server->timeout_ms * 1000;
-        ret = select(server->fd + 1, &fds, NULL, NULL, &tv);
-    }
-    else
-    {
-        struct timeval tv = {0, 0};
-        ret = select(server->fd + 1, &fds, NULL, NULL, &tv);
-    }
-    if (ret < 0)
-    {
-        LOG("select() failed: %s (errno=%d)", strerror(errno), errno);
-        return -1;
-    }
-
-    if (ret == 0 || !FD_ISSET(server->fd, &fds))
-        return 0;
+    int ret = socket_select(server->fd, server->timeout_ms);
+    if (ret <= 0)
+        return ret;
 
     ssize_t n = recvfrom(server->fd, buf->data, buf->capacity, 0, NULL, NULL);
     if (n < 0)

@@ -1,24 +1,16 @@
 #include "tcp.h"
 #include "common.h"
 #include "buffer.h"
+#include "socket.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
-
-static int set_nonblocking(int fd)
-{
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0)
-        return -1;
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
 
 int tcp_server_init(tcp_server_t *server, int port, int timeout_ms)
 {
@@ -32,50 +24,14 @@ int tcp_server_init(tcp_server_t *server, int port, int timeout_ms)
     for (int i = 0; i < TCP_MAX_CLIENTS; i++)
         server->clients[i].fd = -1;
 
-    server->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    server->listen_fd = socket_init_server(AF_INET, SOCK_STREAM);
     if (server->listen_fd < 0)
-    {
-        LOGV("socket() failed: %s (errno=%d)", strerror(errno), errno);
         return -1;
-    }
 
-    int reuse = 1;
-    if (setsockopt(server->listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
-    {
-        LOGV("setsockopt(SO_REUSEADDR) failed: %s (errno=%d)", strerror(errno), errno);
-        close(server->listen_fd);
+    if (socket_bind(server->listen_fd, port) < 0)
         return -1;
-    }
-
-    if (set_nonblocking(server->listen_fd) < 0)
-    {
-        LOGV("set_nonblocking() failed: %s (errno=%d)", strerror(errno), errno);
-        close(server->listen_fd);
-        return -1;
-    }
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(port);
-
-    if (bind(server->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-    {
-        LOG("bind() failed on port %d: %s (errno=%d)", port, strerror(errno), errno);
-        close(server->listen_fd);
-        return -1;
-    }
-
-    if (listen(server->listen_fd, 5) < 0)
-    {
-        LOGV("listen() failed: %s (errno=%d)", strerror(errno), errno);
-        close(server->listen_fd);
-        return -1;
-    }
 
     LOG("server listening on port %d", port);
-
     return 0;
 }
 
@@ -139,7 +95,6 @@ int tcp_server_listen(tcp_server_t *server, buffer_t *out_buf)
     }
     else
     {
-        // Non-blocking mode: check if any fd is ready without waiting
         struct timeval tv = {0, 0};
         ret = select(max_fd + 1, &fds, NULL, NULL, &tv);
     }
@@ -152,17 +107,14 @@ int tcp_server_listen(tcp_server_t *server, buffer_t *out_buf)
     if (ret == 0)
         return 0;
 
-    if (FD_ISSET(server->listen_fd, &fds)) // Incoming connection
+    if (FD_ISSET(server->listen_fd, &fds))
     {
         struct sockaddr_in client_addr;
         socklen_t client_addr_len = sizeof(client_addr);
 
         int client_fd = accept(server->listen_fd, (struct sockaddr *)&client_addr, &client_addr_len);
         if (client_fd < 0)
-        {
-            LOG("accept() failed: %s (errno=%d)", strerror(errno), errno);
             goto handle_connected_clients;
-        }
 
         if (server->num_clients >= TCP_MAX_CLIENTS)
         {
@@ -171,9 +123,9 @@ int tcp_server_listen(tcp_server_t *server, buffer_t *out_buf)
             goto handle_connected_clients;
         }
 
-        if (set_nonblocking(client_fd) < 0)
+        if (socket_set_nonblocking(client_fd) < 0)
         {
-            LOG("could not set incoming connection to nonblocking mode: %s (errno=%d)", strerror(errno), errno);
+            LOG("could not set incoming connection to nonblocking mode");
             close(client_fd);
             goto handle_connected_clients;
         }
@@ -193,7 +145,7 @@ handle_connected_clients:
             continue;
 
         if (!FD_ISSET(server->clients[i].fd, &fds))
-            continue; // No data to be read
+            continue;
 
         int n = read(server->clients[i].fd, out_buf->data, out_buf->capacity);
         if (n > 0)
@@ -256,9 +208,9 @@ int tcp_client_init(tcp_client_t *client, const char *addr, int port, int timeou
         return -1;
     }
 
-    if (set_nonblocking(client->fd) < 0)
+    if (socket_set_nonblocking(client->fd) < 0)
     {
-        LOGV("set_nonblocking() failed: %s (errno=%d)", strerror(errno), errno);
+        LOGV("net_set_nonblocking() failed: %s (errno=%d)", strerror(errno), errno);
         close(client->fd);
         client->fd = -1;
         return -1;
@@ -309,54 +261,15 @@ int tcp_client_listen(tcp_client_t *client, buffer_t *out_buf)
     if (client->fd < 0)
         return -1;
 
-    int error;
-    socklen_t len = sizeof(error);
-    if (getsockopt(client->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
+    if (socket_check_connection(client->fd) < 0)
     {
-        LOG("getsockopt failed: %s (errno=%d)", strerror(errno), errno);
         tcp_client_free(client);
         return -1;
     }
 
-    if (error != 0)
-    {
-        // EINPROGRESS is expected for non-blocking connects, don't fail on it
-        if (error != EINPROGRESS)
-        {
-            LOG("connection failed: %s", strerror(error));
-            tcp_client_free(client);
-            return -1;
-        }
-    }
-
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(client->fd, &fds);
-
-    int ret;
-    if (client->timeout_ms > 0)
-    {
-        struct timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = client->timeout_ms * 1000;
-        ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
-    }
-    else
-    {
-        struct timeval tv = {0, 0};
-        ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
-    }
-    if (ret < 0)
-    {
-        LOG("select failed: %s (errno=%d)", strerror(errno), errno);
-        return -1;
-    }
-
-    if (ret == 0)
-        return 0;
-
-    if (!FD_ISSET(client->fd, &fds))
-        return 0;
+    int ret = socket_select(client->fd, client->timeout_ms);
+    if (ret <= 0)
+        return ret;
 
     int n = read(client->fd, out_buf->data, out_buf->capacity);
     if (n > 0)
@@ -383,18 +296,8 @@ int tcp_client_send(tcp_client_t *client, const buffer_t *buf)
     if (buf->size == 0)
         return 0;
 
-    int error;
-    socklen_t len = sizeof(error);
-    if (getsockopt(client->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
+    if (socket_check_connection(client->fd) < 0)
     {
-        LOG("getsockopt failed: %s (errno=%d)", strerror(errno), errno);
-        tcp_client_free(client);
-        return -1;
-    }
-
-    if (error != 0 && error != EINPROGRESS)
-    {
-        LOG("connection failed: %s", strerror(error));
         tcp_client_free(client);
         return -1;
     }

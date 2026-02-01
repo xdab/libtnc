@@ -1,23 +1,15 @@
 #include "uds.h"
 #include "common.h"
 #include "buffer.h"
+#include "socket.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/un.h>
 #include <errno.h>
-
-static int set_nonblocking(int fd)
-{
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0)
-        return -1;
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
 
 int uds_server_init(uds_server_t *server, const char *socket_path, int timeout_ms)
 {
@@ -72,8 +64,15 @@ int uds_server_init(uds_server_t *server, const char *socket_path, int timeout_m
         return -1;
     }
 
-    LOG("server listening on %s", socket_path);
+    if (socket_set_nonblocking(server->listen_fd) < 0)
+    {
+        LOGV("socket_set_nonblocking() failed: %s (errno=%d)", strerror(errno), errno);
+        close(server->listen_fd);
+        unlink(socket_path);
+        return -1;
+    }
 
+    LOG("server listening on %s", socket_path);
     return 0;
 }
 
@@ -160,10 +159,7 @@ int uds_server_listen(uds_server_t *server, buffer_t *out_buf)
 
         int client_fd = accept(server->listen_fd, (struct sockaddr *)&client_addr, &client_addr_len);
         if (client_fd < 0)
-        {
-            LOG("accept() failed: %s (errno=%d)", strerror(errno), errno);
             goto handle_connected_clients;
-        }
 
         if (server->num_clients >= UDS_MAX_CLIENTS)
         {
@@ -172,9 +168,9 @@ int uds_server_listen(uds_server_t *server, buffer_t *out_buf)
             goto handle_connected_clients;
         }
 
-        if (set_nonblocking(client_fd) < 0)
+        if (socket_set_nonblocking(client_fd) < 0)
         {
-            LOG("could not set incoming connection to nonblocking mode: %s (errno=%d)", strerror(errno), errno);
+            LOG("could not set incoming connection to nonblocking mode");
             close(client_fd);
             goto handle_connected_clients;
         }
@@ -265,9 +261,9 @@ int uds_client_init(uds_client_t *client, const char *socket_path, int timeout_m
         return -1;
     }
 
-    if (set_nonblocking(client->fd) < 0)
+    if (socket_set_nonblocking(client->fd) < 0)
     {
-        LOGV("set_nonblocking() failed: %s (errno=%d)", strerror(errno), errno);
+        LOGV("socket_set_nonblocking() failed: %s (errno=%d)", strerror(errno), errno);
         close(client->fd);
         client->fd = -1;
         return -1;
@@ -310,53 +306,15 @@ int uds_client_listen(uds_client_t *client, buffer_t *out_buf)
     if (client->fd < 0)
         return -1;
 
-    int error;
-    socklen_t len = sizeof(error);
-    if (getsockopt(client->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
+    if (socket_check_connection(client->fd) < 0)
     {
-        LOG("getsockopt failed: %s (errno=%d)", strerror(errno), errno);
         uds_client_free(client);
         return -1;
     }
 
-    if (error != 0)
-    {
-        if (error != EINPROGRESS)
-        {
-            LOG("connection failed: %s", strerror(error));
-            uds_client_free(client);
-            return -1;
-        }
-    }
-
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(client->fd, &fds);
-
-    int ret;
-    if (client->timeout_ms > 0)
-    {
-        struct timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = client->timeout_ms * 1000;
-        ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
-    }
-    else
-    {
-        struct timeval tv = {0, 0};
-        ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
-    }
-    if (ret < 0)
-    {
-        LOG("select failed: %s (errno=%d)", strerror(errno), errno);
-        return -1;
-    }
-
-    if (ret == 0)
-        return 0;
-
-    if (!FD_ISSET(client->fd, &fds))
-        return 0;
+    int ret = socket_select(client->fd, client->timeout_ms);
+    if (ret <= 0)
+        return ret;
 
     int n = read(client->fd, out_buf->data, out_buf->capacity);
     if (n > 0)
@@ -383,18 +341,8 @@ int uds_client_send(uds_client_t *client, const buffer_t *buf)
     if (buf->size == 0)
         return 0;
 
-    int error;
-    socklen_t len = sizeof(error);
-    if (getsockopt(client->fd, SOL_SOCKET, SO_ERROR, &error, &len) < 0)
+    if (socket_check_connection(client->fd) < 0)
     {
-        LOG("getsockopt failed: %s (errno=%d)", strerror(errno), errno);
-        uds_client_free(client);
-        return -1;
-    }
-
-    if (error != 0 && error != EINPROGRESS)
-    {
-        LOG("connection failed: %s", strerror(error));
         uds_client_free(client);
         return -1;
     }
