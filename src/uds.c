@@ -104,6 +104,9 @@ static void uds_remove_client(uds_server_t *server, int idx)
     if (idx < 0 || idx >= server->num_clients)
         return;
 
+    if (server->on_client_disconnect)
+        server->on_client_disconnect(server->clients[idx].fd, server->user_data);
+
     close(server->clients[idx].fd);
 
     for (int i = idx; i < server->num_clients - 1; i++)
@@ -177,6 +180,9 @@ int uds_server_listen(uds_server_t *server, buffer_t *out_buf)
 
         server->clients[server->num_clients].fd = client_fd;
         server->num_clients++;
+
+        if (server->on_client_connect)
+            server->on_client_connect(client_fd, server->user_data);
 
         LOG("client connected (total: %d)", server->num_clients);
     }

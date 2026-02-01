@@ -59,6 +59,9 @@ static void tcp_remove_client(tcp_server_t *server, int idx)
     if (idx < 0 || idx >= server->num_clients)
         return;
 
+    if (server->on_client_disconnect)
+        server->on_client_disconnect(server->clients[idx].fd, server->user_data);
+
     close(server->clients[idx].fd);
 
     for (int i = idx; i < server->num_clients - 1; i++)
@@ -132,6 +135,9 @@ int tcp_server_listen(tcp_server_t *server, buffer_t *out_buf)
 
         server->clients[server->num_clients].fd = client_fd;
         server->num_clients++;
+
+        if (server->on_client_connect)
+            server->on_client_connect(client_fd, server->user_data);
 
         char ipbuf[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, ipbuf, sizeof(ipbuf));

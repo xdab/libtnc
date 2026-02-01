@@ -16,6 +16,8 @@ typedef struct uds_client
     int timeout_ms;
 } uds_client_t;
 
+typedef void (*uds_client_event_cb_t)(int client_fd, void *user_data);
+
 typedef struct uds_server
 {
     int listen_fd;
@@ -23,6 +25,9 @@ typedef struct uds_server
     int num_clients;
     char socket_path[UDS_SOCKET_PATH_MAX];
     int timeout_ms;
+    uds_client_event_cb_t on_client_connect;
+    uds_client_event_cb_t on_client_disconnect;
+    void *user_data;
 } uds_server_t;
 
 int uds_server_init(uds_server_t *server, const char *socket_path, int timeout_ms);

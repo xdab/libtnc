@@ -15,12 +15,17 @@ typedef struct tcp_client
     int timeout_ms;
 } tcp_client_t;
 
+typedef void (*tcp_client_event_cb_t)(int client_fd, void *user_data);
+
 typedef struct tcp_server
 {
     int listen_fd;
     tcp_client_t clients[TCP_MAX_CLIENTS];
     int num_clients;
     int timeout_ms;
+    tcp_client_event_cb_t on_client_connect;
+    tcp_client_event_cb_t on_client_disconnect;
+    void *user_data;
 } tcp_server_t;
 
 int tcp_server_init(tcp_server_t *server, int port, int timeout_ms);
