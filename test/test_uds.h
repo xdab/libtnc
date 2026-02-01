@@ -16,17 +16,28 @@
 void test_uds_server_init_valid(void)
 {
     uds_server_t server;
-    int result = uds_server_init(&server, TEST_SOCKET_PATH);
+    int result = uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
     assert_equal_int(result, 0, "init returns 0");
     assert_true(server.listen_fd > 2, "listen_fd valid");
     assert_equal_int(server.num_clients, 0, "num_clients 0");
+    assert_equal_int(server.timeout_ms, UDS_DEF_TIMEOUT_MS, "timeout_ms set correctly");
+    uds_server_free(&server);
+}
+
+void test_uds_server_init_timeout_ms_zero(void)
+{
+    uds_server_t server;
+    int result = uds_server_init(&server, TEST_SOCKET_PATH, 0);
+    assert_equal_int(result, 0, "init with timeout_ms=0 returns 0");
+    assert_true(server.listen_fd > 2, "listen_fd valid");
+    assert_equal_int(server.timeout_ms, 0, "timeout_ms is 0");
     uds_server_free(&server);
 }
 
 void test_uds_server_listen_timeout(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
     char buf_data[1];
     buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
     int result = uds_server_listen(&server, &buf);
@@ -34,10 +45,26 @@ void test_uds_server_listen_timeout(void)
     uds_server_free(&server);
 }
 
+void test_uds_server_listen_no_block(void)
+{
+    uds_server_t server;
+    uds_server_init(&server, TEST_SOCKET_PATH, 0); // Non-blocking mode
+    assert_equal_int(server.timeout_ms, 0, "timeout_ms is 0");
+
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
+
+    // With timeout_ms=0, should return immediately without blocking
+    int result = uds_server_listen(&server, &buf);
+    assert_equal_int(result, 0, "no data returns 0");
+
+    uds_server_free(&server);
+}
+
 void test_uds_server_accept_client(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     pid_t pid = fork();
     if (pid == 0)
@@ -69,7 +96,7 @@ void test_uds_server_accept_client(void)
 void test_uds_server_read_data(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     pid_t pid = fork();
     if (pid == 0)
@@ -103,7 +130,7 @@ void test_uds_server_read_data(void)
 void test_uds_server_client_disconnect(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     pid_t pid = fork();
     if (pid == 0)
@@ -138,7 +165,7 @@ void test_uds_server_client_disconnect(void)
 void test_uds_server_broadcast(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     int pipefd[2];
     pipe(pipefd);
@@ -188,7 +215,7 @@ void test_uds_server_broadcast(void)
 void test_uds_server_free(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
     uds_server_free(&server);
     assert_equal_int(server.listen_fd, -1, "listen_fd reset");
     assert_equal_int(server.num_clients, 0, "num_clients reset");
@@ -198,25 +225,41 @@ void test_uds_server_init_invalid_path(void)
 {
     uds_server_t server;
 
-    int result = uds_server_init(&server, "");
+    int result = uds_server_init(&server, "", UDS_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "empty path rejected");
 
     char long_path[200];
     memset(long_path, 'a', sizeof(long_path) - 1);
     long_path[sizeof(long_path) - 1] = '\0';
-    result = uds_server_init(&server, long_path);
+    result = uds_server_init(&server, long_path, UDS_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "too long path rejected");
 }
 
 void test_uds_client_init_valid(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     uds_client_t client;
-    int result = uds_client_init(&client, TEST_SOCKET_PATH);
+    int result = uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
     assert_equal_int(result, 0, "init returns 0");
     assert_true(client.fd >= 0, "socket valid");
+    assert_equal_int(client.timeout_ms, UDS_DEF_TIMEOUT_MS, "timeout_ms set correctly");
+
+    uds_client_free(&client);
+    uds_server_free(&server);
+}
+
+void test_uds_client_init_timeout_ms_zero(void)
+{
+    uds_server_t server;
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
+
+    uds_client_t client;
+    int result = uds_client_init(&client, TEST_SOCKET_PATH, 0);
+    assert_equal_int(result, 0, "init with timeout_ms=0 returns 0");
+    assert_true(client.fd >= 0, "socket valid");
+    assert_equal_int(client.timeout_ms, 0, "timeout_ms is 0");
 
     uds_client_free(&client);
     uds_server_free(&server);
@@ -226,26 +269,26 @@ void test_uds_client_init_invalid_path(void)
 {
     uds_client_t client;
 
-    int result = uds_client_init(&client, "");
+    int result = uds_client_init(&client, "", UDS_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "empty path rejected");
 
     char long_path[200];
     memset(long_path, 'a', sizeof(long_path) - 1);
     long_path[sizeof(long_path) - 1] = '\0';
-    result = uds_client_init(&client, long_path);
+    result = uds_client_init(&client, long_path, UDS_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "too long path rejected");
 
-    result = uds_client_init(&client, "/nonexistent/path.sock");
+    result = uds_client_init(&client, "/nonexistent/path.sock", UDS_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "nonexistent path rejected");
 }
 
 void test_uds_client_listen_timeout(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     uds_client_t client;
-    uds_client_init(&client, TEST_SOCKET_PATH);
+    uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     char buf_data[1];
     buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
@@ -259,16 +302,38 @@ void test_uds_client_listen_timeout(void)
     uds_server_free(&server);
 }
 
+void test_uds_client_listen_no_block(void)
+{
+    uds_server_t server;
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
+
+    uds_client_t client;
+    uds_client_init(&client, TEST_SOCKET_PATH, 0); // Non-blocking mode
+    assert_equal_int(client.timeout_ms, 0, "timeout_ms is 0");
+
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
+
+    usleep(200000);
+
+    // With timeout_ms=0, should return immediately without blocking
+    int result = uds_client_listen(&client, &buf);
+    assert_equal_int(result, 0, "no data returns 0");
+
+    uds_client_free(&client);
+    uds_server_free(&server);
+}
+
 void test_uds_client_connect_and_read(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     pid_t pid = fork();
     if (pid == 0)
     {
         uds_client_t client;
-        int client_init = uds_client_init(&client, TEST_SOCKET_PATH);
+        int client_init = uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[16];
@@ -313,13 +378,13 @@ void test_uds_client_connect_and_read(void)
 void test_uds_client_server_disconnect(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     pid_t pid = fork();
     if (pid == 0)
     {
         uds_client_t client;
-        int client_init = uds_client_init(&client, TEST_SOCKET_PATH);
+        int client_init = uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[16];
@@ -371,9 +436,9 @@ void test_uds_client_server_disconnect(void)
 void test_uds_client_read_error(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
     uds_client_t client;
-    uds_client_init(&client, TEST_SOCKET_PATH);
+    uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     close(client.fd);
     client.fd = -1;
@@ -388,10 +453,10 @@ void test_uds_client_read_error(void)
 void test_uds_client_free(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     uds_client_t client;
-    uds_client_init(&client, TEST_SOCKET_PATH);
+    uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
     uds_client_free(&client);
     assert_equal_int(client.fd, -1, "socket reset");
 
@@ -401,14 +466,14 @@ void test_uds_client_free(void)
 void test_uds_client_partial_read(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     pid_t pid = fork();
     if (pid == 0)
     {
         usleep(200000);
         uds_client_t client;
-        int client_init = uds_client_init(&client, TEST_SOCKET_PATH);
+        int client_init = uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[8];
@@ -456,13 +521,13 @@ void test_uds_client_partial_read(void)
 void test_uds_client_connection_in_progress(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     pid_t pid = fork();
     if (pid == 0)
     {
         uds_client_t client;
-        int client_init = uds_client_init(&client, TEST_SOCKET_PATH);
+        int client_init = uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[16];
@@ -503,7 +568,7 @@ void test_uds_client_connection_in_progress(void)
 void test_uds_server_broadcast_two_clients(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     int pipefd1[2], pipefd2[2];
     pipe(pipefd1);
@@ -583,13 +648,13 @@ void test_uds_server_broadcast_two_clients(void)
 void test_uds_client_send(void)
 {
     uds_server_t server;
-    uds_server_init(&server, TEST_SOCKET_PATH);
+    uds_server_init(&server, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
 
     pid_t pid = fork();
     if (pid == 0)
     {
         uds_client_t client;
-        int client_init = uds_client_init(&client, TEST_SOCKET_PATH);
+        int client_init = uds_client_init(&client, TEST_SOCKET_PATH, UDS_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         // Wait for connection to establish

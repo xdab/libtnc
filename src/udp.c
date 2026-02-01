@@ -11,9 +11,6 @@
 #include <arpa/inet.h>
 #include <errno.h>
 
-#define SELECT_TIMEOUT_MS 100
-#define SELECT_TIMEOUT_US (SELECT_TIMEOUT_MS * 1000)
-
 int udp_sender_init(udp_sender_t *sender, const char *addr, int port)
 {
     nonnull(sender, "sender");
@@ -108,13 +105,14 @@ static int set_nonblocking(int fd)
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-int udp_server_init(udp_server_t *server, int port)
+int udp_server_init(udp_server_t *server, int port, int timeout_ms)
 {
     nonnull(server, "server");
     EXITIF(port < 0, -1, "port must be positive");
     EXITIF(port > 65535, -1, "port must be less than 65536");
 
     memset(server, 0, sizeof(udp_server_t));
+    server->timeout_ms = timeout_ms;
 
     server->fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (server->fd < 0)
@@ -175,11 +173,19 @@ int udp_server_listen(udp_server_t *server, buffer_t *buf)
     FD_ZERO(&fds);
     FD_SET(server->fd, &fds);
 
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = SELECT_TIMEOUT_US;
-
-    int ret = select(server->fd + 1, &fds, NULL, NULL, &tv);
+    int ret;
+    if (server->timeout_ms > 0)
+    {
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = server->timeout_ms * 1000;
+        ret = select(server->fd + 1, &fds, NULL, NULL, &tv);
+    }
+    else
+    {
+        struct timeval tv = {0, 0};
+        ret = select(server->fd + 1, &fds, NULL, NULL, &tv);
+    }
     if (ret < 0)
     {
         LOG("select() failed: %s (errno=%d)", strerror(errno), errno);

@@ -6,6 +6,7 @@
 #include "buffer.h"
 
 #define UDP_MAX_PORT 65535
+#define UDP_DEF_TIMEOUT_MS 50
 
 typedef struct udp_sender
 {
@@ -22,9 +23,10 @@ void udp_sender_free(udp_sender_t *sender);
 typedef struct udp_server
 {
     int fd;
+    int timeout_ms;
 } udp_server_t;
 
-int udp_server_init(udp_server_t *server, int port);
+int udp_server_init(udp_server_t *server, int port, int timeout_ms);
 
 void udp_server_free(udp_server_t *server);
 

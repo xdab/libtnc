@@ -12,9 +12,6 @@
 #include <arpa/inet.h>
 #include <errno.h>
 
-#define SELECT_TIMEOUT_MS 100
-#define SELECT_TIMEOUT_US (SELECT_TIMEOUT_MS * 1000)
-
 static int set_nonblocking(int fd)
 {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -23,13 +20,14 @@ static int set_nonblocking(int fd)
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-int tcp_server_init(tcp_server_t *server, int port)
+int tcp_server_init(tcp_server_t *server, int port, int timeout_ms)
 {
     nonnull(server, "server");
     EXITIF(port < 0, -1, "port must be positive");
     EXITIF(port > 65535, -1, "port must be less than 65536");
 
     memset(server, 0, sizeof(tcp_server_t));
+    server->timeout_ms = timeout_ms;
 
     for (int i = 0; i < TCP_MAX_CLIENTS; i++)
         server->clients[i].fd = -1;
@@ -131,11 +129,20 @@ int tcp_server_listen(tcp_server_t *server, buffer_t *out_buf)
             max_fd = max(max_fd, server->clients[i].fd);
         }
 
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = SELECT_TIMEOUT_US;
-
-    int ret = select(max_fd + 1, &fds, NULL, NULL, &tv);
+    int ret;
+    if (server->timeout_ms > 0)
+    {
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = server->timeout_ms * 1000;
+        ret = select(max_fd + 1, &fds, NULL, NULL, &tv);
+    }
+    else
+    {
+        // Non-blocking mode: check if any fd is ready without waiting
+        struct timeval tv = {0, 0};
+        ret = select(max_fd + 1, &fds, NULL, NULL, &tv);
+    }
     if (ret < 0)
     {
         LOG("select() failed: %s (errno=%d)", strerror(errno), errno);
@@ -232,7 +239,7 @@ void tcp_server_broadcast(tcp_server_t *server, const buffer_t *buf)
     }
 }
 
-int tcp_client_init(tcp_client_t *client, const char *addr, int port)
+int tcp_client_init(tcp_client_t *client, const char *addr, int port, int timeout_ms)
 {
     nonnull(client, "client");
     nonnull(addr, "addr");
@@ -240,6 +247,7 @@ int tcp_client_init(tcp_client_t *client, const char *addr, int port)
     EXITIF(port > 65535, -1, "port must be less than 65536");
 
     memset(client, 0, sizeof(tcp_client_t));
+    client->timeout_ms = timeout_ms;
 
     client->fd = socket(AF_INET, SOCK_STREAM, 0);
     if (client->fd < 0)
@@ -325,11 +333,19 @@ int tcp_client_listen(tcp_client_t *client, buffer_t *out_buf)
     FD_ZERO(&fds);
     FD_SET(client->fd, &fds);
 
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = SELECT_TIMEOUT_US;
-
-    int ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
+    int ret;
+    if (client->timeout_ms > 0)
+    {
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = client->timeout_ms * 1000;
+        ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
+    }
+    else
+    {
+        struct timeval tv = {0, 0};
+        ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
+    }
     if (ret < 0)
     {
         LOG("select failed: %s (errno=%d)", strerror(errno), errno);

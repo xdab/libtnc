@@ -11,9 +11,6 @@
 #include <sys/un.h>
 #include <errno.h>
 
-#define SELECT_TIMEOUT_MS 100
-#define SELECT_TIMEOUT_US (SELECT_TIMEOUT_MS * 1000)
-
 static int set_nonblocking(int fd)
 {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -22,7 +19,7 @@ static int set_nonblocking(int fd)
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-int uds_server_init(uds_server_t *server, const char *socket_path)
+int uds_server_init(uds_server_t *server, const char *socket_path, int timeout_ms)
 {
     nonnull(server, "server");
     nonnull(socket_path, "socket_path");
@@ -41,6 +38,7 @@ int uds_server_init(uds_server_t *server, const char *socket_path)
 
     memset(server, 0, sizeof(uds_server_t));
     memcpy(server->socket_path, socket_path, path_len);
+    server->timeout_ms = timeout_ms;
 
     for (int i = 0; i < UDS_MAX_CLIENTS; i++)
         server->clients[i].fd = -1;
@@ -133,11 +131,19 @@ int uds_server_listen(uds_server_t *server, buffer_t *out_buf)
             max_fd = max(max_fd, server->clients[i].fd);
         }
 
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = SELECT_TIMEOUT_US;
-
-    int ret = select(max_fd + 1, &fds, NULL, NULL, &tv);
+    int ret;
+    if (server->timeout_ms > 0)
+    {
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = server->timeout_ms * 1000;
+        ret = select(max_fd + 1, &fds, NULL, NULL, &tv);
+    }
+    else
+    {
+        struct timeval tv = {0, 0};
+        ret = select(max_fd + 1, &fds, NULL, NULL, &tv);
+    }
     if (ret < 0)
     {
         LOG("select() failed: %s (errno=%d)", strerror(errno), errno);
@@ -232,7 +238,7 @@ void uds_server_broadcast(uds_server_t *server, const buffer_t *buf)
     }
 }
 
-int uds_client_init(uds_client_t *client, const char *socket_path)
+int uds_client_init(uds_client_t *client, const char *socket_path, int timeout_ms)
 {
     nonnull(client, "client");
     nonnull(socket_path, "socket_path");
@@ -250,6 +256,7 @@ int uds_client_init(uds_client_t *client, const char *socket_path)
     }
 
     memset(client, 0, sizeof(uds_client_t));
+    client->timeout_ms = timeout_ms;
 
     client->fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (client->fd < 0)
@@ -326,11 +333,19 @@ int uds_client_listen(uds_client_t *client, buffer_t *out_buf)
     FD_ZERO(&fds);
     FD_SET(client->fd, &fds);
 
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = SELECT_TIMEOUT_US;
-
-    int ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
+    int ret;
+    if (client->timeout_ms > 0)
+    {
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = client->timeout_ms * 1000;
+        ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
+    }
+    else
+    {
+        struct timeval tv = {0, 0};
+        ret = select(client->fd + 1, &fds, NULL, NULL, &tv);
+    }
     if (ret < 0)
     {
         LOG("select failed: %s (errno=%d)", strerror(errno), errno);

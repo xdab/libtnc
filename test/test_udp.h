@@ -88,8 +88,6 @@ void test_udp_sender_send_unicast(void)
     assert_equal_int(WEXITSTATUS(status), 0, "child test passed");
 }
 
-
-
 void test_udp_sender_free(void)
 {
     udp_sender_t sender;
@@ -154,16 +152,27 @@ void test_udp_sender_init_broadcast_config(void)
 void test_udp_server_init_valid(void)
 {
     udp_server_t server;
-    int result = udp_server_init(&server, 0);
+    int result = udp_server_init(&server, 0, UDP_DEF_TIMEOUT_MS);
     assert_equal_int(result, 0, "init returns 0");
     assert_true(server.fd >= 0, "socket valid");
+    assert_equal_int(server.timeout_ms, UDP_DEF_TIMEOUT_MS, "timeout_ms set correctly");
+    udp_server_free(&server);
+}
+
+void test_udp_server_init_timeout_ms_zero(void)
+{
+    udp_server_t server;
+    int result = udp_server_init(&server, 0, 0);
+    assert_equal_int(result, 0, "init with timeout_ms=0 returns 0");
+    assert_true(server.fd >= 0, "socket valid");
+    assert_equal_int(server.timeout_ms, 0, "timeout_ms is 0");
     udp_server_free(&server);
 }
 
 void test_udp_server_listen_timeout(void)
 {
     udp_server_t server;
-    udp_server_init(&server, 0);
+    udp_server_init(&server, 0, UDP_DEF_TIMEOUT_MS);
     char buf_data[1];
     buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
     int result = udp_server_listen(&server, &buf);
@@ -171,10 +180,26 @@ void test_udp_server_listen_timeout(void)
     udp_server_free(&server);
 }
 
+void test_udp_server_listen_no_block(void)
+{
+    udp_server_t server;
+    udp_server_init(&server, 0, 0); // Non-blocking mode
+    assert_equal_int(server.timeout_ms, 0, "timeout_ms is 0");
+
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
+
+    // With timeout_ms=0, should return immediately without blocking
+    int result = udp_server_listen(&server, &buf);
+    assert_equal_int(result, 0, "no data returns 0");
+
+    udp_server_free(&server);
+}
+
 void test_udp_server_receive_data(void)
 {
     udp_server_t server;
-    udp_server_init(&server, 0);
+    udp_server_init(&server, 0, UDP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -217,7 +242,7 @@ void test_udp_server_init_invalid_address(void)
     // Test with invalid port (though uint16_t limits this, test edge cases)
     // Port 0 is actually valid (auto-assign), so test something that might fail
     // For now, just ensure init works with valid ports - this mirrors TCP pattern
-    int result = udp_server_init(&server, 0);
+    int result = udp_server_init(&server, 0, UDP_DEF_TIMEOUT_MS);
     assert_equal_int(result, 0, "init with port 0 succeeds");
     udp_server_free(&server);
 }
@@ -225,7 +250,7 @@ void test_udp_server_init_invalid_address(void)
 void test_udp_server_free(void)
 {
     udp_server_t server;
-    udp_server_init(&server, 0);
+    udp_server_init(&server, 0, UDP_DEF_TIMEOUT_MS);
     udp_server_free(&server);
     assert_equal_int(server.fd, -1, "socket reset");
 }

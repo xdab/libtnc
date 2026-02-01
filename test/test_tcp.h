@@ -15,17 +15,27 @@
 void test_tcp_server_init_valid(void)
 {
     tcp_server_t server;
-    int result = tcp_server_init(&server, 0);
+    int result = tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
     assert_equal_int(result, 0, "init returns 0");
     assert_true(server.listen_fd > 2, "listen_fd valid");
     assert_equal_int(server.num_clients, 0, "num_clients 0");
     tcp_server_free(&server);
 }
 
+void test_tcp_server_init_timeout_ms_zero(void)
+{
+    tcp_server_t server;
+    int result = tcp_server_init(&server, 0, 0);
+    assert_equal_int(result, 0, "init with timeout_ms=0 returns 0");
+    assert_true(server.listen_fd > 2, "listen_fd valid");
+    assert_equal_int(server.timeout_ms, 0, "timeout_ms is 0");
+    tcp_server_free(&server);
+}
+
 void test_tcp_server_listen_timeout(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
     char buf_data[1];
     buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
     int result = tcp_server_listen(&server, &buf);
@@ -33,10 +43,26 @@ void test_tcp_server_listen_timeout(void)
     tcp_server_free(&server);
 }
 
+void test_tcp_server_listen_no_block(void)
+{
+    tcp_server_t server;
+    tcp_server_init(&server, 0, 0); // Non-blocking mode
+    assert_equal_int(server.timeout_ms, 0, "timeout_ms is 0");
+
+    char buf_data[1];
+    buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
+
+    // With timeout_ms=0, should return immediately without blocking
+    int result = tcp_server_listen(&server, &buf);
+    assert_equal_int(result, 0, "no data returns 0");
+
+    tcp_server_free(&server);
+}
+
 void test_tcp_server_accept_client(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -74,7 +100,7 @@ void test_tcp_server_accept_client(void)
 void test_tcp_server_read_data(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -114,7 +140,7 @@ void test_tcp_server_read_data(void)
 void test_tcp_server_client_disconnect(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -155,7 +181,7 @@ void test_tcp_server_client_disconnect(void)
 void test_tcp_server_broadcast(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -211,7 +237,7 @@ void test_tcp_server_broadcast(void)
 void test_tcp_server_free(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
     tcp_server_free(&server);
     assert_equal_int(server.listen_fd, -1, "listen_fd reset");
     assert_equal_int(server.num_clients, 0, "num_clients reset");
@@ -220,9 +246,19 @@ void test_tcp_server_free(void)
 void test_tcp_client_init_valid(void)
 {
     tcp_client_t client;
-    int result = tcp_client_init(&client, "127.0.0.1", 12345);
+    int result = tcp_client_init(&client, "127.0.0.1", 12345, TCP_DEF_TIMEOUT_MS);
     assert_equal_int(result, 0, "init returns 0");
     assert_true(client.fd >= 0, "socket valid");
+    tcp_client_free(&client);
+}
+
+void test_tcp_client_init_timeout_ms_zero(void)
+{
+    tcp_client_t client;
+    int result = tcp_client_init(&client, "127.0.0.1", 12345, 0);
+    assert_equal_int(result, 0, "init with timeout_ms=0 returns 0");
+    assert_true(client.fd >= 0, "socket valid");
+    assert_equal_int(client.timeout_ms, 0, "timeout_ms is 0");
     tcp_client_free(&client);
 }
 
@@ -231,31 +267,31 @@ void test_tcp_client_init_invalid_address(void)
     tcp_client_t client;
 
     // Empty address
-    int result = tcp_client_init(&client, "", 12345);
+    int result = tcp_client_init(&client, "", 12345, TCP_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "empty address rejected");
 
     // Too long address
     char long_addr[INET_ADDRSTRLEN + 10];
     memset(long_addr, '1', sizeof(long_addr) - 1);
     long_addr[sizeof(long_addr) - 1] = '\0';
-    result = tcp_client_init(&client, long_addr, 12345);
+    result = tcp_client_init(&client, long_addr, 12345, TCP_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "too long address rejected");
 
     // Malformed addresses (inet_pton will reject these)
-    result = tcp_client_init(&client, "192.168.1", 12345);
+    result = tcp_client_init(&client, "192.168.1", 12345, TCP_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "malformed address rejected");
 
-    result = tcp_client_init(&client, "192.168.abc.1", 12345);
+    result = tcp_client_init(&client, "192.168.abc.1", 12345, TCP_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "non-numeric address rejected");
 
-    result = tcp_client_init(&client, "999.999.999.999", 12345);
+    result = tcp_client_init(&client, "999.999.999.999", 12345, TCP_DEF_TIMEOUT_MS);
     assert_equal_int(result, -1, "invalid octet values rejected");
 }
 
 void test_tcp_client_listen_timeout(void)
 {
     tcp_client_t client;
-    tcp_client_init(&client, "127.0.0.1", 12345);
+    tcp_client_init(&client, "127.0.0.1", 12345, TCP_DEF_TIMEOUT_MS);
     char buf_data[1];
     buffer_t buf = {.data = (unsigned char *)buf_data, .capacity = 1, .size = 0};
 
@@ -270,7 +306,7 @@ void test_tcp_client_listen_timeout(void)
 void test_tcp_client_connect_and_read(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -282,7 +318,7 @@ void test_tcp_client_connect_and_read(void)
     {
         // Child process: create client and connect
         tcp_client_t client;
-        int client_init = tcp_client_init(&client, "127.0.0.1", port);
+        int client_init = tcp_client_init(&client, "127.0.0.1", port, TCP_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[16];
@@ -330,7 +366,7 @@ void test_tcp_client_connect_and_read(void)
 void test_tcp_client_server_disconnect(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -342,7 +378,7 @@ void test_tcp_client_server_disconnect(void)
     {
         // Child process: create client and connect
         tcp_client_t client;
-        int client_init = tcp_client_init(&client, "127.0.0.1", port);
+        int client_init = tcp_client_init(&client, "127.0.0.1", port, TCP_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[16];
@@ -399,7 +435,7 @@ void test_tcp_client_server_disconnect(void)
 void test_tcp_client_read_error(void)
 {
     tcp_client_t client;
-    tcp_client_init(&client, "127.0.0.1", 12345);
+    tcp_client_init(&client, "127.0.0.1", 12345, TCP_DEF_TIMEOUT_MS);
 
     // Close socket to force read error
     close(client.fd);
@@ -415,7 +451,7 @@ void test_tcp_client_read_error(void)
 void test_tcp_client_free(void)
 {
     tcp_client_t client;
-    tcp_client_init(&client, "127.0.0.1", 12345);
+    tcp_client_init(&client, "127.0.0.1", 12345, TCP_DEF_TIMEOUT_MS);
     tcp_client_free(&client);
     assert_equal_int(client.fd, -1, "socket reset");
 }
@@ -423,7 +459,7 @@ void test_tcp_client_free(void)
 void test_tcp_client_partial_read(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -435,7 +471,7 @@ void test_tcp_client_partial_read(void)
     {
         usleep(200000);
         tcp_client_t client;
-        int client_init = tcp_client_init(&client, "127.0.0.1", port);
+        int client_init = tcp_client_init(&client, "127.0.0.1", port, TCP_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[8];
@@ -483,7 +519,7 @@ void test_tcp_client_partial_read(void)
 void test_tcp_client_connection_in_progress(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -494,7 +530,7 @@ void test_tcp_client_connection_in_progress(void)
     if (pid == 0)
     {
         tcp_client_t client;
-        int client_init = tcp_client_init(&client, "127.0.0.1", port);
+        int client_init = tcp_client_init(&client, "127.0.0.1", port, TCP_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[16];
@@ -535,7 +571,7 @@ void test_tcp_client_connection_in_progress(void)
 void test_tcp_client_write_error(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -546,7 +582,7 @@ void test_tcp_client_write_error(void)
     if (pid == 0)
     {
         tcp_client_t client;
-        int client_init = tcp_client_init(&client, "127.0.0.1", port);
+        int client_init = tcp_client_init(&client, "127.0.0.1", port, TCP_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         char buf_data[16];
@@ -588,7 +624,7 @@ void test_tcp_client_write_error(void)
 void test_tcp_server_broadcast_two_clients(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -675,7 +711,7 @@ void test_tcp_server_broadcast_two_clients(void)
 void test_tcp_client_send(void)
 {
     tcp_server_t server;
-    tcp_server_init(&server, 0);
+    tcp_server_init(&server, 0, TCP_DEF_TIMEOUT_MS);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -686,7 +722,7 @@ void test_tcp_client_send(void)
     if (pid == 0)
     {
         tcp_client_t client;
-        int client_init = tcp_client_init(&client, "127.0.0.1", port);
+        int client_init = tcp_client_init(&client, "127.0.0.1", port, TCP_DEF_TIMEOUT_MS);
         assert_equal_int(client_init, 0, "client init successful");
 
         // Wait for connection to establish
