@@ -80,7 +80,7 @@ hldc_error_e hldc_framer_process(hldc_framer_t *framer, const buffer_t *frame_bu
 
     if (out_crc != NULL)
         *out_crc = crc;
-        
+
     return HLDC_SUCCESS;
 }
 
@@ -100,15 +100,12 @@ static hldc_error_e hldc_deframer_process_flag(hldc_deframer_t *deframer, buffer
     int frame_len = deframer->bytes_len - 2;
 
     if (frame_len <= 0 || out_frame_buf == NULL)
-    {
         // Consecutive flags or no output provided, nothing to do, not an error
         ret = 0;
-    }
+
     else if (frame_len < deframer->min_frame_size)
-    {
-        LOGD("invalid frame: too small, %d bytes, but minimum is %d", frame_len, deframer->min_frame_size);
         ret = -HLDC_FRAME_TOO_SMALL;
-    }
+
     else if (frame_len <= out_frame_buf->capacity)
     {
         // Extract received FCS
@@ -133,16 +130,10 @@ static hldc_error_e hldc_deframer_process_flag(hldc_deframer_t *deframer, buffer
             LOGV("valid frame: %d bytes", frame_len);
         }
         else
-        {
             ret = -HLDC_INVALID_FCS;
-            LOGD("invalid frame: FCS calculated 0x%04X, received 0x%04X", computed_fcs, received_fcs);
-        }
     }
     else
-    {
         ret = -HLDC_BUF_TOO_SMALL;
-        LOGV("invalid frame: too large, %d bytes, but output buffer capacity is %d", deframer->bytes_len - 2, out_frame_buf->capacity);
-    }
 
     hldc_deframer_reset(deframer);
     return ret;
