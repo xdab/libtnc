@@ -8,7 +8,6 @@ void socket_poller_init(socket_poller_t *pol)
 {
     memset(pol, 0, sizeof(socket_poller_t));
     pol->epoll_fd = -1;
-    pol->audio_fd = -1;
 
     pol->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
     if (pol->epoll_fd < 0)
@@ -25,12 +24,10 @@ void socket_poller_free(socket_poller_t *pol)
         close(pol->epoll_fd);
         pol->epoll_fd = -1;
     }
-    pol->audio_fd = -1;
-    pol->num_sockets = 0;
     pol->num_events = 0;
 }
 
-int socket_poller_add_socket(socket_poller_t *pol, int fd, uint32_t events)
+int socket_poller_add(socket_poller_t *pol, int fd, uint32_t events)
 {
     if (pol->epoll_fd < 0)
         return -1;
@@ -45,28 +42,6 @@ int socket_poller_add_socket(socket_poller_t *pol, int fd, uint32_t events)
         return -1;
     }
 
-    pol->num_sockets++;
-    return 0;
-}
-
-int socket_poller_add_audio(socket_poller_t *pol, int fd)
-{
-    if (pol->epoll_fd < 0)
-        return -1;
-    if (pol->audio_fd >= 0)
-        return -1;
-
-    struct epoll_event ev;
-    ev.events = EPOLLIN;
-    ev.data.fd = fd;
-
-    if (epoll_ctl(pol->epoll_fd, EPOLL_CTL_ADD, fd, &ev) < 0)
-    {
-        LOGV("epoll_ctl ADD failed for audio fd %d: %s", fd, strerror(errno));
-        return -1;
-    }
-
-    pol->audio_fd = fd;
     return 0;
 }
 
@@ -80,11 +55,6 @@ int socket_poller_remove(socket_poller_t *pol, int fd)
         LOGV("epoll_ctl DEL failed for fd %d: %s", fd, strerror(errno));
         return -1;
     }
-
-    if (fd == pol->audio_fd)
-        pol->audio_fd = -1;
-    else if (pol->num_sockets > 0)
-        pol->num_sockets--;
 
     return 0;
 }
@@ -109,7 +79,7 @@ int socket_poller_wait(socket_poller_t *pol, int timeout_ms)
     return ret;
 }
 
-int socket_poller_is_socket_ready(socket_poller_t *pol, int fd)
+int socket_poller_is_ready(socket_poller_t *pol, int fd)
 {
     for (int i = 0; i < pol->num_events; i++)
     {
@@ -117,11 +87,4 @@ int socket_poller_is_socket_ready(socket_poller_t *pol, int fd)
             return (pol->events[i].events & EPOLLIN) ? 1 : 0;
     }
     return 0;
-}
-
-int socket_poller_is_audio_ready(socket_poller_t *pol)
-{
-    if (pol->audio_fd < 0)
-        return 0;
-    return socket_poller_is_socket_ready(pol, pol->audio_fd);
 }
