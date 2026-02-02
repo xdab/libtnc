@@ -18,6 +18,7 @@ set(TNC_SOURCES
     src/conf.c
     src/common.c
     src/socket.c
+    src/poller.c
 )
 add_library(tnc STATIC ${TNC_SOURCES})
 target_include_directories(tnc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
