@@ -7,7 +7,7 @@
 #include "test_tcp.h"
 #include "test_udp.h"
 #include "test_uds.h"
-#include "test_selector.h"
+#include "test_poller.h"
 
 int main(void)
 {
@@ -136,21 +136,18 @@ int main(void)
     test_uds_client_send();
     end_module();
 
-    begin_module("Selector");
-    test_selector_create();
-    test_selector_add_single();
-    test_selector_add_multiple();
-    test_selector_add_max();
-    test_selector_remove();
-    test_selector_remove_nonexistent();
-    test_selector_wait_timeout();
-    test_selector_wait_ready();
-    test_selector_is_ready();
-    test_selector_is_ready_not_ready();
-    test_selector_free();
-    test_selector_mixed_events();
-    test_selector_max_fd_tracking();
-    test_selector_wait_error();
+    begin_module("Poller");
+    test_poller_create();
+    test_poller_add_single();
+    test_poller_add_multiple();
+    test_poller_remove();
+    test_poller_remove_nonexistent();
+    test_poller_wait_timeout();
+    test_poller_wait_ready();
+    test_poller_is_ready();
+    test_poller_is_ready_not_ready();
+    test_poller_free();
+    test_poller_mixed_events();
     end_module();
 
     int failed = end_suite();

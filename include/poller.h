@@ -23,5 +23,4 @@ int socket_poller_add(socket_poller_t *pol, int fd, uint32_t events);
 int socket_poller_remove(socket_poller_t *pol, int fd);
 
 int socket_poller_wait(socket_poller_t *pol, int timeout_ms);
-
 int socket_poller_is_ready(socket_poller_t *pol, int fd);
