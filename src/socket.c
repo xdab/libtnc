@@ -171,6 +171,10 @@ int socket_selector_remove(socket_selector_t *sel, int fd)
 
 int socket_selector_wait(socket_selector_t *sel, int timeout_ms)
 {
+    // Clear ready bits from previous iteration
+    for (int i = 0; i < sel->num_fds; i++)
+        sel->events[i] &= 0x7FFFFFFF;
+
     fd_set read_fds;
     fd_set write_fds;
     fd_set error_fds;
