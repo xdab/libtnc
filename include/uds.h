@@ -2,6 +2,7 @@
 #define UDS_H
 
 #include <sys/select.h>
+#include <sys/un.h>
 #include <stddef.h>
 #include "buffer.h"
 
@@ -47,5 +48,32 @@ void uds_client_free(uds_client_t *client);
 int uds_client_listen(uds_client_t *client, buffer_t *out_buf);
 
 int uds_client_send(uds_client_t *client, const buffer_t *buf);
+
+// Connectionless datagram sockets
+
+typedef struct uds_dgram_sender
+{
+    int fd;
+    struct sockaddr_un dest_addr;
+} uds_dgram_sender_t;
+
+typedef struct uds_dgram_server
+{
+    int fd;
+    int timeout_ms;
+    char socket_path[UDS_SOCKET_PATH_MAX];
+} uds_dgram_server_t;
+
+int uds_dgram_sender_init(uds_dgram_sender_t *sender, const char *dest_socket_path);
+
+int uds_dgram_sender_send(uds_dgram_sender_t *sender, const buffer_t *buf);
+
+void uds_dgram_sender_free(uds_dgram_sender_t *sender);
+
+int uds_dgram_server_init(uds_dgram_server_t *server, const char *socket_path, int timeout_ms);
+
+int uds_dgram_server_listen(uds_dgram_server_t *server, buffer_t *out_buf);
+
+void uds_dgram_server_free(uds_dgram_server_t *server);
 
 #endif

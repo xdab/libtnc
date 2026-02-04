@@ -7,6 +7,7 @@
 #include "test_tcp.h"
 #include "test_udp.h"
 #include "test_uds.h"
+#include "test_uds_dgram.h"
 #include "test_poller.h"
 
 int main(void)
@@ -134,6 +135,21 @@ int main(void)
     test_uds_client_connection_in_progress();
     test_uds_server_broadcast_two_clients();
     test_uds_client_send();
+    end_module();
+
+    begin_module("UDS Datagram");
+    test_uds_dgram_sender_init_valid();
+    test_uds_dgram_sender_init_invalid_path();
+    test_uds_dgram_sender_send();
+    test_uds_dgram_sender_send_empty();
+    test_uds_dgram_sender_free();
+    test_uds_dgram_server_init_valid();
+    test_uds_dgram_server_init_timeout_ms_zero();
+    test_uds_dgram_server_init_invalid_path();
+    test_uds_dgram_server_listen_timeout();
+    test_uds_dgram_server_listen_no_block();
+    test_uds_dgram_server_free();
+    test_uds_dgram_server_multiple_messages();
     end_module();
 
     begin_module("Poller");

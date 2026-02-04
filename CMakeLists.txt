@@ -14,6 +14,7 @@ set(TNC_SOURCES
     src/tcp.c
     src/udp.c
     src/uds.c
+    src/uds_dgram.c
     src/line.c
     src/conf.c
     src/common.c
@@ -33,3 +34,7 @@ install(DIRECTORY include/
 # Tests
 add_executable(tnc_test test/main_test.c test/test.c)
 target_link_libraries(tnc_test tnc m)
+
+# Echo server example
+add_executable(libtnc_echo src/libtnc_echo.c)
+target_link_libraries(libtnc_echo tnc)

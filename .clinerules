@@ -1,6 +1,6 @@
 # .clinerules - Technical Rules for libtnc
 
-TNC protocol library for AX.25 packet radio. Provides AX.25/KISS/TNC2/HDLC/CRC encoding and decoding, plus TCP/UDP networking and line parsing.
+TNC protocol library for AX.25 packet radio. Provides AX.25/KISS/TNC2/HDLC/CRC encoding and decoding, plus TCP/UDP networking, Unix Domain Socket IPC and line parsing.
 
 ## Code Style
 
@@ -24,11 +24,13 @@ TNC protocol library for AX.25 packet radio. Provides AX.25/KISS/TNC2/HDLC/CRC e
 ### Core
 
 - `buf_*` / `fbuf_*`: Buffer capacity/size checks
-- `line_*`: Line parsing from stdin/TCP
-- `tcp_*`: TCP client/server integration
-- `udp_*`: UDP packet transmission and reception
-- `uds_*`: Unix domain socket client/server
-- `socket_*`: Socket utilities and multi-FD select() helper
+- `line_*`: Line parsing from stdin/TCP/UDS
+- `tcp_*`: TCP server (`tcp_server_*`) and client (`tcp_client_*`) with callbacks
+- `udp_*`: UDP sender (`udp_sender_*`) and server (`udp_server_*`)
+- `uds_*`: Unix domain socket client/server (stream)
+- `uds_dgram_*`: Unix domain socket datagram (connectionless)
+- `socket_*`: Socket utilities (bind, nonblocking, etc.)
+- `poller_*`: epoll-based multi-FD polling (`socket_poller_*`)
 - `common_*`: Logging macros and utilities
 
 ## Protocol Details
@@ -54,7 +56,7 @@ Messages: lowercase start, no period/newline (auto-added).
 
 **Library**: `libtnc.a` (static)
 
-**Makefile targets**: `build`, `release`, `test`, `install`, `clean`
+**Makefile targets**: `build`, `release`, `test`, `install`, `clean`, `echo`
 
 ## Unit Testing
 
@@ -63,3 +65,7 @@ Messages: lowercase start, no period/newline (auto-added).
 - Run via `make test`
 - Use assertion macros from `test.h`
 - Test: normal operation, boundary conditions (empty/full/wrap), init/free, diverse inputs
+
+## Using in real projects
+
+Refer to snippets in `README.md` as well as a demo echo server in `src/libtnc_echo.c`.
