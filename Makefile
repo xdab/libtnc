@@ -1,4 +1,4 @@
-.PHONY: all build release test install clean echo
+.PHONY: all build release test install clean
 
 all: test
 
@@ -20,6 +20,3 @@ install: release
 
 clean:
 	rm -rf build
-
-echo: build
-	./build/libtnc_echo

@@ -1,11 +1,11 @@
 # .clinerules - Technical Rules for libtnc
 
-TNC protocol library for AX.25 packet radio. Provides AX.25/KISS/TNC2/HDLC/CRC encoding and decoding, plus TCP/UDP networking, Unix Domain Socket IPC and line parsing.
+TNC-related utilities library for AX.25 packet radio. Contains utilities both intended for use **in** a TNC program as well as others **interfacing** with a TNC.
 
 ## Code Style
 
 - **Minimal comments**—self-explanatory code preferred
-- **Function prefixes** group related functionality: `ax25_`, `hldc_`, `kiss_`, `tnc2_`, `crc_`, `tcp_`, `udp_`, `uds_`, `socket_`, `line_`, `buf_`/`fbuf_`
+- **Function prefixes** group related functionality: `ax25_`, `hldc_`, `kiss_`, `tnc2_`, `crc_`, `line_`, `buf_`
 - **Struct-based organization** with `init()`, `process()`, `free()` pattern
 - **Buffer safety**: Always pass buffer size, verify available capacity before writes
 - **Error codes**: 0 = success, negative = error
@@ -17,20 +17,14 @@ TNC protocol library for AX.25 packet radio. Provides AX.25/KISS/TNC2/HDLC/CRC e
 
 - `ax25_addr_*` / `ax25_packet_*`: AX.25 (7-byte addresses: 6-char callsign, SSID, repeat flag)
 - `hldc_framer_*` / `hldc_deframer_*`: HDLC framing (NRZI, bit stuffing, CRC-CCITT 0xFFFF, 0x7E flags)
-- `tnc2_*`: TNC2 text format parsing
-- `kiss_*`: KISS binary protocol with escape sequences
-- `crc_ccitt_*`: CRC-CCITT checksums
+- `tnc2_*`: TNC2 text format parsing (human-readable: STATION>DEST,PATH:DATA)
+- `kiss_*`: KISS binary protocol with escape sequences (PORT + COMMAND + data, 0xC0 delimiters)
+- `crc_ccitt_*`: CRC-CCITT checksums (16-bit CRC calculation)
 
 ### Core
 
-- `buf_*` / `fbuf_*`: Buffer capacity/size checks
-- `line_*`: Line parsing from stdin/TCP/UDS
-- `tcp_*`: TCP server (`tcp_server_*`) and client (`tcp_client_*`) with callbacks
-- `udp_*`: UDP sender (`udp_sender_*`) and server (`udp_server_*`)
-- `uds_*`: Unix domain socket client/server (stream)
-- `uds_dgram_*`: Unix domain socket datagram (connectionless)
-- `socket_*`: Socket utilities (bind, nonblocking, etc.)
-- `poller_*`: epoll-based multi-FD polling (`socket_poller_*`)
+- `buf_*`: Buffer capacity/size checks and safe write operations
+- `line_*`: Buffered line reader with callback for parsing line-based input
 - `common_*`: Logging macros and utilities
 
 ## Protocol Details
@@ -56,7 +50,7 @@ Messages: lowercase start, no period/newline (auto-added).
 
 **Library**: `libtnc.a` (static)
 
-**Makefile targets**: `build`, `release`, `test`, `install`, `clean`, `echo`
+**Makefile targets**: `build`, `release`, `test`, `install`, `clean`
 
 ## Unit Testing
 
@@ -68,4 +62,4 @@ Messages: lowercase start, no period/newline (auto-added).
 
 ## Using in real projects
 
-Refer to snippets in `README.md` as well as a demo echo server in `src/libtnc_echo.c`.
+Refer to snippets in `README.md` for usage examples.

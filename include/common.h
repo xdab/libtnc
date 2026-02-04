@@ -1,7 +1,8 @@
-#pragma once
+#ifndef COMMON_H
+#define COMMON_H
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 
 #ifndef M_PI
@@ -15,8 +16,8 @@ typedef enum
     LOG_LEVEL_DEBUG = 20
 } log_level_e;
 
-extern log_level_e _log_level;
-extern int _func_pad;
+static int _func_pad = -26;
+static log_level_e _log_level = LOG_LEVEL_STANDARD;
 
 // General informational messages that should always be visible (with function prefix).
 #define LOG(str, ...)                                                                   \
@@ -75,3 +76,5 @@ extern int _func_pad;
 // Utility macros
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
+
+#endif
