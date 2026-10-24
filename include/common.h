@@ -22,21 +22,21 @@ static log_level_e _log_level = LOG_LEVEL_STANDARD;
 // General informational messages that should always be visible (with function prefix).
 #define LOG(str, ...)                                                                   \
     ({                                                                                  \
-        fprintf(stderr, "i | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
+        (void)fprintf(stderr, "i | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
     })
 
 // Detailed informational messages visible only with the verbose logging mode.
 #define LOGV(str, ...)                                                                      \
     ({                                                                                      \
         if (_log_level >= LOG_LEVEL_VERBOSE)                                                \
-            fprintf(stderr, "v | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
+            (void)fprintf(stderr, "v | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
     });
 
 // Extremely detailed debugging messages visible only with the debug logging mode.
 #define LOGD(str, ...)                                                                      \
     ({                                                                                      \
         if (_log_level >= LOG_LEVEL_DEBUG)                                                  \
-            fprintf(stderr, "d | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
+            (void)fprintf(stderr, "d | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
     });
 
 #define EXIT(str, ...)           \
@@ -49,7 +49,7 @@ static log_level_e _log_level = LOG_LEVEL_STANDARD;
     ({                                    \
         if (cond)                         \
         {                                 \
-            fprintf(stderr, __VA_ARGS__); \
+            (void)fprintf(stderr, __VA_ARGS__); \
             exit(exit_code);              \
         }                                 \
     });
