@@ -16,8 +16,8 @@ typedef enum
     LOG_LEVEL_DEBUG = 20
 } log_level_e;
 
-static int g_logg_log_func_pad = -26;
-static log_level_e gg_log_level = LOG_LEVEL_STANDARD;
+static int g_log_func_pad = -26;
+static log_level_e g_log_level = LOG_LEVEL_STANDARD;
 
 // General informational messages that should always be visible (with function prefix).
 #define LOG(str, ...)                                                                   \
