@@ -16,27 +16,27 @@ typedef enum
     LOG_LEVEL_DEBUG = 20
 } log_level_e;
 
-static int _func_pad = -26;
-static log_level_e _log_level = LOG_LEVEL_STANDARD;
+static int g_logg_log_func_pad = -26;
+static log_level_e gg_log_level = LOG_LEVEL_STANDARD;
 
 // General informational messages that should always be visible (with function prefix).
 #define LOG(str, ...)                                                                   \
     ({                                                                                  \
-        (void)fprintf(stderr, "i | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
+        (void)fprintf(stderr, "i | %*s | " str "\n", g_log_func_pad, __FUNCTION__, ##__VA_ARGS__); \
     })
 
 // Detailed informational messages visible only with the verbose logging mode.
 #define LOGV(str, ...)                                                                      \
     ({                                                                                      \
-        if (_log_level >= LOG_LEVEL_VERBOSE)                                                \
-            (void)fprintf(stderr, "v | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
+        if (g_log_level >= LOG_LEVEL_VERBOSE)                                                \
+            (void)fprintf(stderr, "v | %*s | " str "\n", g_log_func_pad, __FUNCTION__, ##__VA_ARGS__); \
     });
 
 // Extremely detailed debugging messages visible only with the debug logging mode.
 #define LOGD(str, ...)                                                                      \
     ({                                                                                      \
-        if (_log_level >= LOG_LEVEL_DEBUG)                                                  \
-            (void)fprintf(stderr, "d | %*s | " str "\n", _func_pad, __FUNCTION__, ##__VA_ARGS__); \
+        if (g_log_level >= LOG_LEVEL_DEBUG)                                                  \
+            (void)fprintf(stderr, "d | %*s | " str "\n", g_log_func_pad, __FUNCTION__, ##__VA_ARGS__); \
     });
 
 #define EXIT(str, ...)           \
